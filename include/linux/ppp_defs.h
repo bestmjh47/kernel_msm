@@ -14,7 +14,8 @@
 
 /*
  * The basic PPP frame.
- */
+ */ 
+#define	PPP_MTU		1500	/* Default MTU (size of Info field) */
 #define PPP_HDRLEN	4	/* octets for standard ppp header */
 #define PPP_FCSLEN	2	/* octets for FCS */
 #define PPP_MRU		1500	/* default MRU = max length of info field */

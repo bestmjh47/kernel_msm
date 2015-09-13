@@ -27,6 +27,9 @@
 #include <linux/mfd/wcd9xxx/core.h>
 #include "msm-pcm-routing.h"
 #include "../codecs/wcd9310.h"
+#ifdef CONFIG_KTTECH_SOUND
+#include <mach/board.h>
+#endif
 
 /* 8960 machine driver */
 
@@ -55,13 +58,23 @@
 #define GPIO_AUX_PCM_CLK 66
 
 #define TABLA_EXT_CLK_RATE 12288000
-
+#ifdef CONFIG_KTTECH_SOUND
+#define TABLA_MBHC_DEF_BUTTONS 1
+#else
 #define TABLA_MBHC_DEF_BUTTONS 8
+#endif
 #define TABLA_MBHC_DEF_RLOADS 5
 
 #define JACK_DETECT_GPIO 38
 #define JACK_DETECT_INT PM8921_GPIO_IRQ(PM8921_IRQ_BASE, JACK_DETECT_GPIO)
 #define JACK_US_EURO_SEL_GPIO 35
+
+
+#ifdef CONFIG_KTTECH_SOUND //CONFIG_KTTECH_SOUND_SPK_MSMGPIO - hw versionÀ¸·Î Ã³¸®
+#define SPK_PAMP_GPIO (52)
+static int msm8960_ext_spk_configured;
+#endif
+
 
 static u32 top_spk_pamp_gpio  = PM8921_GPIO_PM_TO_SYS(18);
 static u32 bottom_spk_pamp_gpio = PM8921_GPIO_PM_TO_SYS(19);
@@ -212,7 +225,16 @@ static void msm8960_ext_spk_power_amp_on(u32 spk)
 			(msm8960_ext_top_spk_pamp & TOP_SPK_AMP_NEG)) ||
 				(msm8960_ext_top_spk_pamp & TOP_SPK_AMP)) {
 
+#ifdef CONFIG_KTTECH_SOUND //CONFIG_KTTECH_SOUND_SPK_MSMGPIO
+			if ( 1 ) { //get_kttech_hw_version() >= ES2_HW_VER ) {
+				gpio_set_value(SPK_PAMP_GPIO, 1);
+			}
+			else {
+				msm8960_enable_ext_spk_amp_gpio(top_spk_pamp_gpio);
+			}
+#else
 			msm8960_enable_ext_spk_amp_gpio(top_spk_pamp_gpio);
+#endif
 			pr_debug("%s: sleeping 4 ms after turning on "
 				" external Top Speaker Ampl\n", __func__);
 			usleep_range(4000, 4000);
@@ -260,8 +282,19 @@ static void msm8960_ext_spk_power_amp_off(u32 spk)
 		if (msm8960_ext_top_spk_pamp)
 			return;
 
+#ifdef CONFIG_KTTECH_SOUND
+		if (1) { // get_kttech_hw_version() >= ES2_HW_VER ) {
+			gpio_set_value(SPK_PAMP_GPIO, 0);
+		}
+		else {
+			gpio_direction_output(top_spk_pamp_gpio, 0);
+			gpio_free(top_spk_pamp_gpio);
+		}
+
+#else
 		gpio_direction_output(top_spk_pamp_gpio, 0);
 		gpio_free(top_spk_pamp_gpio);
+#endif		
 		msm8960_ext_top_spk_pamp = 0;
 
 		pr_debug("%s: sleeping 4 ms after ext Top Spek Ampl is off\n",
@@ -439,6 +472,9 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 
 	SND_SOC_DAPM_MIC("Handset Mic", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+#ifdef CONFIG_KTTECH_SOUND
+	SND_SOC_DAPM_MIC("Line Mic", NULL),
+#endif	
 	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
 	SND_SOC_DAPM_MIC("ANCRight Headset Mic", NULL),
 	SND_SOC_DAPM_MIC("ANCLeft Headset Mic", NULL),
@@ -453,6 +489,33 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 };
 
 static const struct snd_soc_dapm_route common_audio_map[] = {
+#ifdef CONFIG_KTTECH_SOUND
+	
+		{"RX_BIAS", NULL, "MCLK"},
+		{"LDO_H", NULL, "MCLK"},
+	
+		/* Speaker path */
+		{"Ext Spk Top Pos", NULL, "LINEOUT1"},
+		{"Ext Spk Top Neg", NULL, "LINEOUT3"},
+	
+		/* Microphone path */
+		{"AMIC1", NULL, "MIC BIAS1 External"},
+		{"MIC BIAS1 External", NULL, "Handset Mic"},
+	
+		{"AMIC2", NULL, "MIC BIAS2 External"},
+		{"MIC BIAS2 External", NULL, "Headset Mic"},
+	
+		/**
+		 * AMIC3 and AMIC4 inputs are connected to ANC microphones
+		 * These mics are biased differently on CDP and FLUID
+		 * routing entries below are based on bias arrangement
+		 * on FLUID.
+		 */
+		{"AMIC3", NULL, "MIC BIAS3 External"},	 //Analog MIC3 
+		{"MIC BIAS3 External", NULL, "Line Mic"},
+	
+		{"HEADPHONE", NULL, "LDO_H"},
+#else		
 
 	{"RX_BIAS", NULL, "MCLK"},
 	{"LDO_H", NULL, "MCLK"},
@@ -466,9 +529,13 @@ static const struct snd_soc_dapm_route common_audio_map[] = {
 	{"Ext Spk Top", NULL, "LINEOUT5"},
 
 	/* Microphone path */
+#ifdef CONFIG_KTTECH_SOUND	
+  {"AMIC1", NULL, "MIC BIAS1 External"},
+  {"MIC BIAS1 External", NULL, "Handset Mic"},
+#else
 	{"AMIC1", NULL, "MIC BIAS1 Internal1"},
 	{"MIC BIAS1 Internal1", NULL, "Handset Mic"},
-
+#endif
 	{"AMIC2", NULL, "MIC BIAS2 External"},
 	{"MIC BIAS2 External", NULL, "Headset Mic"},
 
@@ -478,8 +545,13 @@ static const struct snd_soc_dapm_route common_audio_map[] = {
 	 * routing entries below are based on bias arrangement
 	 * on FLUID.
 	 */
+#ifdef CONFIG_KTTECH_SOUND 
+	{"AMIC3", NULL, "MIC BIAS3 External"},
+	{"MIC BIAS3 External", NULL, "Line Mic"},
+#else
 	{"AMIC3", NULL, "MIC BIAS3 Internal1"},
 	{"MIC BIAS3 Internal1", NULL, "MIC BIAS2 External"},
+#endif	
 	{"MIC BIAS2 External", NULL, "ANCRight Headset Mic"},
 	{"AMIC4", NULL, "MIC BIAS1 Internal2"},
 	{"MIC BIAS1 Internal2", NULL, "MIC BIAS2 External"},
@@ -537,6 +609,7 @@ static const struct snd_soc_dapm_route common_audio_map[] = {
 	 */
 	{"DMIC6", NULL, "MIC BIAS4 External"},
 	{"MIC BIAS4 External", NULL, "Digital Mic6"},
+#endif	
 };
 
 static const char *spk_function[] = {"Off", "On"};
@@ -715,6 +788,9 @@ static void *def_tabla_mbhc_cal(void)
 	btn_low = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_V_BTN_LOW);
 	btn_high = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_V_BTN_HIGH);
 	btn_low[0] = -50;
+#ifdef CONFIG_KTTECH_SOUND
+	btn_high[0] = 600;
+#else
 	btn_high[0] = 10;
 	btn_low[1] = 11;
 	btn_high[1] = 52;
@@ -730,6 +806,7 @@ static void *def_tabla_mbhc_cal(void)
 	btn_high[6] = 244;
 	btn_low[7] = 245;
 	btn_high[7] = 330;
+#endif	
 	n_ready = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_N_READY);
 	n_ready[0] = 80;
 	n_ready[1] = 68;
@@ -768,7 +845,7 @@ static int msm8960_hw_params(struct snd_pcm_substream *substream,
 				msm8960_slim_0_rx_ch, rx_ch);
 		if (ret < 0) {
 			pr_err("%s: failed to set cpu chan map\n", __func__);
-			goto end;
+			goto end; 
 		}
 		ret = snd_soc_dai_set_channel_map(codec_dai, 0, 0,
 				msm8960_slim_0_rx_ch, rx_ch);
@@ -931,11 +1008,18 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	if (machine_is_msm8960_cdp())
 		mbhc_cfg.swap_gnd_mic = msm8960_swap_gnd_mic;
 
+#ifdef CONFIG_KTTECH_SOUND
+        if ( get_kttech_hw_version() >= ES2_HW_VER ) {
+            mbhc_cfg.gpio = PM8921_GPIO_PM_TO_SYS(JACK_DETECT_GPIO);
+            mbhc_cfg.gpio_irq = JACK_DETECT_INT;
+            mbhc_cfg.gpio_level_insert = 0;
+        }
+#else
 	if (hs_detect_use_gpio) {
 		mbhc_cfg.gpio = PM8921_GPIO_PM_TO_SYS(JACK_DETECT_GPIO);
 		mbhc_cfg.gpio_irq = JACK_DETECT_INT;
 	}
-
+#endif
 	if (mbhc_cfg.gpio) {
 		err = pm8xxx_gpio_config(mbhc_cfg.gpio, &jack_gpio_cfg);
 		if (err) {
@@ -1684,6 +1768,44 @@ static void msm8960_free_headset_mic_gpios(void)
 	}
 }
 
+#ifdef CONFIG_KTTECH_SOUND //CONFIG_KTTECH_SOUND_SPK_MSMGPIO
+static int msm8960_configure_ext_spk_gpio(void)
+{
+	int rc = 0;
+
+	rc = gpio_request(SPK_PAMP_GPIO, "ext_spk_en_gpio");
+	if (rc) {
+		pr_err("%s: Failed to request gpio [%d]\n",
+			__func__, SPK_PAMP_GPIO);
+		return rc;
+	}
+
+	rc = gpio_direction_output(SPK_PAMP_GPIO, 1);
+	if (rc) {
+		pr_err("%s: Failed to configure gpio [%d]\n",
+			__func__, SPK_PAMP_GPIO);
+		goto free_gpio;
+	}
+
+	gpio_set_value(SPK_PAMP_GPIO, 0);
+
+	return rc;
+
+free_gpio:
+	gpio_free(SPK_PAMP_GPIO);
+
+	return rc;
+}
+static void msm8960_free_ext_spk_gpio(void)
+{
+	if (msm8960_ext_spk_configured) {
+		gpio_set_value(SPK_PAMP_GPIO, 0);
+		gpio_free(SPK_PAMP_GPIO);
+	}
+}
+#endif
+
+
 static int __init msm8960_audio_init(void)
 {
 	int ret;
@@ -1745,6 +1867,16 @@ static int __init msm8960_audio_init(void)
 	} else
 		msm8960_headset_gpios_configured = 1;
 
+#ifdef CONFIG_KTTECH_SOUND //CONFIG_KTTECH_SOUND_SPK_MSMGPIO
+	if ( 1) { //get_kttech_hw_version() >= ES2_HW_VER ) {
+		if (msm8960_configure_ext_spk_gpio()) {
+			pr_err("%s Fail to configure speaker gpio\n", __func__);
+			msm8960_ext_spk_configured = 0;
+		} else
+				msm8960_ext_spk_configured = 1;
+	}
+#endif
+
 	mutex_init(&cdc_mclk_mutex);
 	return ret;
 
@@ -1758,6 +1890,12 @@ static void __exit msm8960_audio_exit(void)
 		return ;
 	}
 	msm8960_free_headset_mic_gpios();
+#ifdef CONFIG_KTTECH_SOUND //CONFIG_KTTECH_SOUND_SPK_MSMGPIO
+		if (1) { //tech_hw_version() >= ES2_HW_VER ) {
+			msm8960_free_ext_spk_gpio();
+		}
+#endif
+
 	platform_device_unregister(msm8960_snd_device);
 	platform_device_unregister(msm8960_snd_tabla1x_device);
 	kfree(mbhc_cfg.calibration);

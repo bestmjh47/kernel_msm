@@ -67,3 +67,5 @@ obj-$(CONFIG_TILE_SROM)		+= tile-srom.o
 obj-$(CONFIG_MSM_ROTATOR)	+= msm_rotator.o
 obj-$(CONFIG_MMC_GENERIC_CSDIO)	+= csdio.o
 obj-$(CONFIG_DIAG_CHAR)		+= diag/
+# KTTech - O7 use FC8050 chip
+obj-$(CONFIG_KTTECH_TDMB_SERVICE)   += dmb_fci/

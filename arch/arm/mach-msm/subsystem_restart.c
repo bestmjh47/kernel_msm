@@ -596,8 +596,11 @@ static int __init subsys_restart_init(void)
 {
 	int ret = 0;
 
+#ifdef CONFIG_MACH_KTTECH
+	restart_level = RESET_SUBSYS_INDEPENDENT;
+#else
 	restart_level = RESET_SOC;
-
+#endif
 	ssr_wq = alloc_workqueue("ssr_wq", 0, 0);
 
 	if (!ssr_wq)

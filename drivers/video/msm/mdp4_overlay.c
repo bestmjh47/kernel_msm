@@ -1962,10 +1962,12 @@ void mdp4_mixer_blend_setup(int mixer)
 			continue;
 		}
 		/* alpha channel is lost on VG pipe when using QSEED or M/N */
+		// KT Tech : Add checking y direction for alpha drop.
 		if (s_pipe->pipe_type == OVERLAY_TYPE_VIDEO &&
 			((s_pipe->op_mode & MDP4_OP_SCALEY_EN) ||
 			(s_pipe->op_mode & MDP4_OP_SCALEX_EN)) &&
-			!(s_pipe->op_mode & MDP4_OP_SCALEY_PIXEL_RPT))
+			!(s_pipe->op_mode & (MDP4_OP_SCALEX_PIXEL_RPT |
+							MDP4_OP_SCALEY_PIXEL_RPT)))
 			alpha_drop = 1;
 
 		d_pipe = mdp4_background_layer(mixer, s_pipe);
@@ -2664,9 +2666,10 @@ static int mdp4_calc_pipe_mdp_bw(struct msm_fb_data_type *mfd,
 
 	res = pipe->src_w * pipe->src_h;
 
-	if (res <= OVERLAY_WSVGA_SIZE)
+	// KT Tech : Fixed Bug.
+	if (res <= OVERLAY_VGA_SIZE)
 		pipe->req_bw = OVERLAY_PERF_LEVEL4;
-	else if (res <= OVERLAY_VGA_SIZE)
+	else if (res <= OVERLAY_WSVGA_SIZE)
 		pipe->req_bw = OVERLAY_PERF_LEVEL3;
 	else if (res <= OVERLAY_720P_TILE_SIZE)
 		pipe->req_bw = OVERLAY_PERF_LEVEL2;

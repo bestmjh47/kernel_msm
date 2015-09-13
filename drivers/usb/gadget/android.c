@@ -75,6 +75,10 @@
 #include "u_uac1.c"
 #include "f_uac1.c"
 
+#ifdef CONFIG_MACH_KTTECH
+#include <mach/board.h>
+#endif
+
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
@@ -83,8 +87,13 @@ MODULE_VERSION("1.0");
 static const char longname[] = "Gadget Android";
 
 /* Default vendor and product IDs, overridden by userspace */
+#ifdef CONFIG_MACH_KTTECH
+#define VENDOR_ID		0x2116
+#define PRODUCT_ID             0x3403
+#else
 #define VENDOR_ID		0x18D1
 #define PRODUCT_ID		0x0001
+#endif
 
 struct android_usb_function {
 	char *name;
@@ -1080,18 +1089,54 @@ struct mass_storage_function_config {
 static int mass_storage_function_init(struct android_usb_function *f,
 					struct usb_composite_dev *cdev)
 {
-	struct android_dev *dev = _android_dev;
 	struct mass_storage_function_config *config;
 	struct fsg_common *common;
 	int err;
+#if 0// kttech usb
 	int i;
 	const char *name[2];
+	struct android_dev *dev = _android_dev;
+#endif
 
 	config = kzalloc(sizeof(struct mass_storage_function_config),
 								GFP_KERNEL);
 	if (!config)
 		return -ENOMEM;
 
+// kttech usb
+#ifdef CONFIG_MACH_KTTECH
+	config->fsg.nluns = 2;
+	config->fsg.luns[0].removable = 1;
+	config->fsg.luns[1].removable = 1;
+
+	common = fsg_common_init(NULL, cdev, &config->fsg);
+	if (IS_ERR(common)) {
+		kfree(config);
+		return PTR_ERR(common);
+	}
+
+	err = sysfs_create_link(&f->dev->kobj,
+				&common->luns[0].dev.kobj,
+				"lun0");
+	if (err) {
+		fsg_common_release(&common->ref);
+		kfree(config);
+		return err;
+	}
+	
+	err = sysfs_create_link(&f->dev->kobj,
+				&common->luns[1].dev.kobj,
+				"lun1");
+	if (err) {
+		fsg_common_release(&common->ref);
+		kfree(config);
+		return err;
+	}
+
+    config->common = common;
+	f->config = config;
+	return 0;
+#else
 	config->fsg.nluns = 1;
 	name[0] = "lun";
 	if (dev->pdata->cdrom) {
@@ -1121,6 +1166,7 @@ static int mass_storage_function_init(struct android_usb_function *f,
 	config->common = common;
 	f->config = config;
 	return 0;
+
 error:
 	for (; i > 0 ; i--)
 		sysfs_remove_link(&f->dev->kobj, name[i-1]);
@@ -1128,6 +1174,7 @@ error:
 	fsg_common_release(&common->ref);
 	kfree(config);
 	return err;
+#endif
 }
 
 static void mass_storage_function_cleanup(struct android_usb_function *f)

@@ -23,6 +23,13 @@
 #include <mach/camera.h>
 #include <mach/gpio.h>
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement flash module : KTD267 */
+#ifdef CONFIG_KTTECH_FLASH_KTD267
+#include <linux/board_kttech.h>
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
 struct i2c_client *sx150x_client;
 struct timer_list timer_flash;
 static struct msm_camera_sensor_info *sensor_data;
@@ -31,6 +38,86 @@ enum msm_cam_flash_stat{
 	MSM_CAM_FLASH_ON,
 };
 
+#if defined CONFIG_MSM_CAMERA_FLASH_SC628A
+static struct i2c_client *sc628a_client;
+
+static const struct i2c_device_id sc628a_i2c_id[] = {
+	{"sc628a", 0},
+	{ }
+};
+
+static int32_t sc628a_i2c_txdata(unsigned short saddr,
+		unsigned char *txdata, int length)
+{
+	struct i2c_msg msg[] = {
+		{
+			.addr = saddr,
+			.flags = 0,
+			.len = length,
+			.buf = txdata,
+		},
+	};
+	if (i2c_transfer(sc628a_client->adapter, msg, 1) < 0) {
+		CDBG("sc628a_i2c_txdata faild 0x%x\n", saddr);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int32_t sc628a_i2c_write_b_flash(uint8_t waddr, uint8_t bdata)
+{
+	int32_t rc = -EFAULT;
+	unsigned char buf[2];
+	if (!sc628a_client)
+		return  -ENOTSUPP;
+
+	memset(buf, 0, sizeof(buf));
+	buf[0] = waddr;
+	buf[1] = bdata;
+
+	rc = sc628a_i2c_txdata(sc628a_client->addr>>1, buf, 2);
+	if (rc < 0) {
+		CDBG("i2c_write_b failed, addr = 0x%x, val = 0x%x!\n",
+				waddr, bdata);
+	}
+	usleep_range(4000, 5000);
+
+	return rc;
+}
+
+static int sc628a_i2c_probe(struct i2c_client *client,
+		const struct i2c_device_id *id)
+{
+	int rc = 0;
+	CDBG("sc628a_probe called!\n");
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		pr_err("i2c_check_functionality failed\n");
+		goto probe_failure;
+	}
+
+	sc628a_client = client;
+
+	CDBG("sc628a_probe successed! rc = %d\n", rc);
+	return 0;
+
+probe_failure:
+	pr_err("sc628a_probe failed! rc = %d\n", rc);
+	return rc;
+}
+
+static struct i2c_driver sc628a_i2c_driver = {
+	.id_table = sc628a_i2c_id,
+	.probe  = sc628a_i2c_probe,
+	.remove = __exit_p(sc628a_i2c_remove),
+	.driver = {
+		.name = "sc628a",
+	},
+};
+#endif
+
+#if defined CONFIG_MSM_CAMERA_FLASH_SC628A
 static struct i2c_client *sc628a_client;
 
 static int32_t flash_i2c_txdata(struct i2c_client *client,
@@ -151,7 +238,7 @@ static struct i2c_driver tps61310_i2c_driver = {
 		.name = "tps61310",
 	},
 };
-
+#endif
 static int config_flash_gpio_table(enum msm_cam_flash_stat stat,
 			struct msm_camera_sensor_strobe_flash_data *sfdata)
 {
@@ -319,8 +406,8 @@ int msm_camera_flash_external(
 	struct msm_camera_sensor_flash_external *external,
 	unsigned led_state)
 {
-	int rc = 0;
-
+    int rc = 0;
+#if defined CONFIG_MSM_CAMERA_FLASH_SC628A
 	switch (led_state) {
 
 	case MSM_CAMERA_LED_INIT:
@@ -458,11 +545,81 @@ error:
 		if (tps61310_client)
 			rc = flash_i2c_write_b(tps61310_client, 0x01, 0x8B);
 		break;
+#endif
 
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement flash module : KTD267 */
+#ifdef CONFIG_KTTECH_FLASH_KTD267
+	switch (led_state) {
+
+	case MSM_CAMERA_LED_INIT:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_INIT:\n", __func__);
+		rc = gpio_request(TORCH_ENABLE, "torch_en");
+		if (rc) {
+			printk("%s: gpio_request failed on TORCH_ENABLE:3, rc=%d\n", __func__,  rc);
+		}
+	
+		rc = gpio_tlmm_config(GPIO_CFG(TORCH_ENABLE, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA), GPIO_CFG_ENABLE);
+		if (rc) {
+			printk("%s: gpio_tlmm_config failed on TORCH_ENABLE:3, rc=%d\n", __func__, rc);
+		}
+
+		rc = gpio_request(FLASH_ENABLE, "flash_en");
+		if (rc) {
+			printk("%s: gpio_request failed on FLASH_ENABLE:63, rc=%d\n", __func__,  rc);
+		}
+	
+		rc = gpio_tlmm_config(GPIO_CFG(FLASH_ENABLE, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA), GPIO_CFG_ENABLE);
+		if (rc) {
+			printk("%s: gpio_tlmm_config failed on FLASH_ENABLE:63, rc=%d\n", __func__, rc);
+		}
+		break;
+	case MSM_CAMERA_LED_RELEASE:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_RELEASE:\n", __func__);
+		rc = gpio_direction_output(TORCH_ENABLE, 0);
+		if (!rc)
+			gpio_free(TORCH_ENABLE);
+		else
+			printk("%s: gpio_direction_output failed %d\n", __func__,	 rc);
+
+		rc = gpio_direction_output(FLASH_ENABLE, 0);
+		if (!rc)
+			gpio_free(FLASH_ENABLE);
+		else
+			printk("%s: gpio_direction_output failed %d\n", __func__,	 rc);
+		break;
+	case MSM_CAMERA_LED_OFF:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_OFF:\n", __func__);
+		rc = gpio_direction_output(TORCH_ENABLE, 0);
+		rc = gpio_direction_output(FLASH_ENABLE, 0);
+		break;
+	case MSM_CAMERA_LED_LOW:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_LOW:\n", __func__);
+		rc = gpio_direction_output(TORCH_ENABLE, 1);
+		break;
+	case MSM_CAMERA_LED_HIGH:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_HIGH:\n", __func__);
+		rc = gpio_direction_output(TORCH_ENABLE, 0);
+		if (rc) {
+			printk("%s: rc:%d = gpio_direction_output(TORCH_ENABLE, 0); failed\n", __func__, rc);
+		}
+		rc = gpio_direction_output(FLASH_ENABLE, 1);
+		if (rc) {
+			printk("%s: rc:%d = gpio_direction_output(FLASH_ENABLE, 1); failed\n", __func__, rc);
+		}
+		msleep(500);
+		rc = gpio_direction_output(FLASH_ENABLE, 0);
+		if (rc) {
+			printk("%s: rc:%d = gpio_direction_output(FLASH_ENABLE, 0); failed\n", __func__, rc);
+		}
+		break;
 	default:
 		rc = -EFAULT;
 		break;
 	}
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 	return rc;
 }
 
@@ -557,6 +714,57 @@ int msm_camera_flash_pmic(
 	return rc;
 }
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+int msm_camera_flash_pmic_kb_light(
+	struct msm_camera_sensor_flash_pmic *pmic,
+	unsigned led_state)
+{
+	int rc = 0;
+	//printk("[HJM] %s, led_state:%d\n", __func__, led_state);
+
+	switch (led_state) {
+	case MSM_CAMERA_LED_OFF:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_OFF:\n", __func__);
+		//pm8xxx_led_kp_set(LED_OFF);
+		//pm8xxx_led_kp_set(0);
+		rc = pmic->pmic_set_current_kb_light(0);
+		break;
+
+	case MSM_CAMERA_LED_LOW:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_LOW:\n", __func__);
+		//pm8xxx_led_kp_set(LED_HALF);
+		//pm8xxx_led_kp_set(127);
+		rc = pmic->pmic_set_current_kb_light(200);
+		break;
+
+	case MSM_CAMERA_LED_HIGH:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_HIGH:\n", __func__);
+		//pm8xxx_led_kp_set(LED_FULL);
+		//pm8xxx_led_kp_set(255);
+		rc = pmic->pmic_set_current_kb_light(255);
+		break;
+
+	case MSM_CAMERA_LED_INIT:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_INIT:\n", __func__);
+		break;
+	case MSM_CAMERA_LED_RELEASE:
+		//printk("[HJM] %s, case MSM_CAMERA_LED_RELEASE:\n", __func__);
+		break;
+
+	default:
+		//printk("[HJM] %s, default:\n", __func__);
+		rc = -EFAULT;
+		break;
+	}
+	CDBG("flash_set_led_state: return %d\n", rc);
+	//printk("[HJM] %s, return rc:%d;\n", __func__, rc);
+
+	return rc;
+}
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 int32_t msm_camera_flash_set_led_state(
 	struct msm_camera_sensor_flash_data *fdata, unsigned led_state)
 {
@@ -568,8 +776,15 @@ int32_t msm_camera_flash_set_led_state(
 
 	switch (fdata->flash_src->flash_sr_type) {
 	case MSM_CAMERA_FLASH_SRC_PMIC:
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+		//printk("[HJM] %s, case MSM_CAMERA_FLASH_SRC_PMIC:\n", __func__);
+		rc = msm_camera_flash_pmic_kb_light(&fdata->flash_src->_fsrc.pmic_src,
+			led_state);
+#else
 		rc = msm_camera_flash_pmic(&fdata->flash_src->_fsrc.pmic_src,
 			led_state);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 		break;
 
 	case MSM_CAMERA_FLASH_SRC_PWM:

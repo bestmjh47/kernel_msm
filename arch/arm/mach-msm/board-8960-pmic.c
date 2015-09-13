@@ -120,6 +120,35 @@ static struct pm8xxx_mpp_init pm8921_mpps[] __initdata = {
 								DOUT_CTRL_LOW),
 };
 
+#ifdef CONFIG_KTTECH_PN544_NFC
+static struct pm8xxx_mpp_config_data nfc_clk_on_config = {
+	.type		= PM8XXX_MPP_TYPE_D_INPUT,
+	.level		= PM8921_MPP_DIG_LEVEL_S4,
+	.control	= PM8XXX_MPP_DIN_TO_INT,
+};
+
+
+static struct pm8xxx_mpp_config_data nfc_clk_off_config = {
+ .type  = PM8XXX_MPP_TYPE_D_INPUT,
+ .level  = PM8XXX_MPP_CS_OUT_5MA,
+ .control = PM8XXX_MPP_CS_CTRL_DISABLE,
+};
+ 
+static int32_t msm_nfc_8960_d1_clk_ctrl(int enable)
+{
+ int rc = 0;
+ if (enable) {
+  rc = pm8xxx_mpp_config(PM8921_MPP_PM_TO_SYS(9),
+   &nfc_clk_on_config);
+ } else {
+  rc = pm8xxx_mpp_config(PM8921_MPP_PM_TO_SYS(9),
+   &nfc_clk_off_config);
+ }
+ return rc;
+}
+#endif
+
+
 void __init msm8960_pm8921_gpio_mpp_init(void)
 {
 	int i, rc;
@@ -141,6 +170,12 @@ void __init msm8960_pm8921_gpio_mpp_init(void)
 			break;
 		}
 	}
+    
+#ifdef CONFIG_KTTECH_PN544_NFC
+	msm_nfc_8960_d1_clk_ctrl(1);
+#endif
+
+	
 }
 
 static struct pm8xxx_adc_amux pm8xxx_adc_channels_data[] = {
@@ -412,27 +447,59 @@ static int pm8921_therm_mitigation[] = {
 	325,
 };
 
+#ifdef CONFIG_MACH_KTTECH
+#define MAX_VOLTAGE_MV		4360
+#else
 #define MAX_VOLTAGE_MV		4200
+#endif
 #define CHG_TERM_MA		100
 static struct pm8921_charger_platform_data pm8921_chg_pdata __devinitdata = {
 	.safety_time		= 180,
 	.update_time		= 60000,
 	.max_voltage		= MAX_VOLTAGE_MV,
 	.min_voltage		= 3200,
+#ifdef CONFIG_MACH_KTTECH
+	.uvd_thresh_voltage = 3850,
+#else
 	.uvd_thresh_voltage	= 4050,
+#endif
 	.resume_voltage_delta	= 100,
 	.term_current		= CHG_TERM_MA,
+#ifdef CONFIG_MACH_KTTECH
+	.cool_temp		= 0,
+	.warm_temp		= 50,
+#else
 	.cool_temp		= 10,
 	.warm_temp		= 40,
+#endif
 	.temp_check_period	= 1,
+#ifdef CONFIG_MACH_KTTECH
+	.max_bat_chg_current	= 850,
+	.cool_bat_chg_current	= 850,
+	.warm_bat_chg_current	= 850,
+	.cool_bat_voltage	= MAX_VOLTAGE_MV,
+	.warm_bat_voltage	= MAX_VOLTAGE_MV,
+	.thermal_mitigation = NULL,
+#else
 	.max_bat_chg_current	= 1100,
 	.cool_bat_chg_current	= 350,
 	.warm_bat_chg_current	= 350,
 	.cool_bat_voltage	= 4100,
 	.warm_bat_voltage	= 4100,
 	.thermal_mitigation	= pm8921_therm_mitigation,
+#endif
 	.thermal_levels		= ARRAY_SIZE(pm8921_therm_mitigation),
+#ifdef CONFIG_MACH_KTTECH
+	.rconn_mohm 	= 30, //JB???
+#else
 	.rconn_mohm		= 18,
+#endif
+#ifdef CONFIG_MACH_KTTECH
+	.batt_id_min	= 0,
+	.batt_id_max	= 0,
+	.cold_thr	= 1, // 80% (0:70% 1:80%)
+	.hot_thr	= 0, // 20% (0:20% 1:35%)
+#endif
 };
 
 static struct pm8xxx_misc_platform_data pm8xxx_misc_pdata = {
@@ -444,12 +511,22 @@ static struct pm8921_bms_platform_data pm8921_bms_pdata __devinitdata = {
 	.r_sense			= 10,
 	.v_cutoff			= 3400,
 	.max_voltage_uv			= MAX_VOLTAGE_MV * 1000,
-	.rconn_mohm			= 18,
+#ifdef CONFIG_MACH_KTTECH
+	.rconn_mohm 	= 30, //JB???
+#else
+	.rconn_mohm		= 18,
+#endif
 	.shutdown_soc_valid_limit	= 20,
 	.adjust_soc_low_threshold	= 25,
 	.chg_term_ua			= CHG_TERM_MA * 1000,
 };
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+#define	PM8921_FLASH_LED_MAX_CURRENT	100		/* I = 100mA */
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 #define	PM8921_LC_LED_MAX_CURRENT	4	/* I = 4mA */
 #define	PM8921_LC_LED_LOW_CURRENT	1	/* I = 1mA */
 #define PM8XXX_LED_PWM_PERIOD		1000
@@ -506,7 +583,19 @@ static struct pm8xxx_led_platform_data pm8xxx_leds_pdata_liquid = {
 	.configs = pm8921_led_configs_liquid,
 	.num_configs = ARRAY_SIZE(pm8921_led_configs_liquid),
 };
-
+#ifdef CONFIG_MACH_KTTECH
+static struct led_info pm8921_led_info[] = {
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+	[0] = {
+		.name			= "led:camera_flash",
+		.default_trigger	= "camera_flash",
+	},
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+};
+#else /* CONFIG_MACH_KTTECH */
 static struct led_info pm8921_led_info[] = {
 	[0] = {
 		.name			= "led:battery_charging",
@@ -517,12 +606,26 @@ static struct led_info pm8921_led_info[] = {
 		.default_trigger	= "battery-full",
 	},
 };
-
+#endif /* CONFIG_MACH_KTTECH */
 static struct led_platform_data pm8921_led_core_pdata = {
 	.num_leds = ARRAY_SIZE(pm8921_led_info),
 	.leds = pm8921_led_info,
 };
 
+#ifdef CONFIG_MACH_KTTECH
+static struct pm8xxx_led_config pm8921_led_configs[] = {
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+	[0] = {
+		.id = PM8XXX_ID_LED_KB_LIGHT,
+		.mode = PM8XXX_LED_MODE_MANUAL,
+		.max_current = PM8921_FLASH_LED_MAX_CURRENT,
+	},
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+};
+#else /* CONFIG_MACH_KTTECH */
 static int pm8921_led0_pwm_duty_pcts[56] = {
 		1, 4, 8, 12, 16, 20, 24, 28, 32, 36,
 		40, 44, 46, 52, 56, 60, 64, 68, 72, 76,
@@ -561,6 +664,7 @@ static struct pm8xxx_led_config pm8921_led_configs[] = {
 		.pwm_period_us = PM8XXX_LED_PWM_PERIOD,
 	},
 };
+#endif/* CONFIG_MACH_KTTECH */
 
 static struct pm8xxx_led_platform_data pm8xxx_leds_pdata = {
 		.led_core = &pm8921_led_core_pdata,
@@ -627,7 +731,9 @@ void __init msm8960_init_pmic(void)
 	} else if (machine_is_msm8960_mtp()) {
 		pm8921_platform_data.bms_pdata->battery_type = BATT_PALLADIUM;
 	} else if (machine_is_msm8960_cdp()) {
+#ifndef CONFIG_MACH_KTTECH
 		pm8921_chg_pdata.has_dc_supply = true;
+#endif
 	}
 
 	if (machine_is_msm8960_fluid())

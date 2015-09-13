@@ -2046,6 +2046,11 @@ static int tabla_codec_enable_lineout(struct snd_soc_dapm_widget *w,
 		usleep_range(16000, 16000);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
+#ifdef CONFIG_KTTECH_SOUND // improve speaker pop noise
+		if (strcmp(w->name, "LINEOUT1 PA") == 0) {		
+			msleep(1);
+		}
+#endif			
 		snd_soc_update_bits(codec, lineout_gain_reg, 0x40, 0x00);
 		break;
 	}
@@ -2967,6 +2972,9 @@ static int tabla_hph_pa_event(struct snd_soc_dapm_widget *w,
 			if (tabla->hph_status & SND_JACK_OC_HPHR)
 				schedule_work(&tabla->hphrocp_work);
 		}
+#ifdef CONFIG_KTTECH_SOUND // improve headset pop noise
+		msleep(1);
+#endif
 
 		TABLA_ACQUIRE_LOCK(tabla->codec_resource_lock);
 		tabla_codec_switch_micbias(codec, 0);
@@ -7617,11 +7625,18 @@ done:
 
 static const struct tabla_reg_mask_val tabla_1_1_reg_defaults[] = {
 
+#ifdef CONFIG_KTTECH_SOUND
+	/* Initialize mic biases to DC-coupled mode */
+	/* Tabla 1.1 MICBIAS changes */
+	TABLA_REG_VAL(TABLA_A_MICB_1_INT_RBIAS, 0x00),
+	TABLA_REG_VAL(TABLA_A_MICB_2_INT_RBIAS, 0x00),
+	TABLA_REG_VAL(TABLA_A_MICB_3_INT_RBIAS, 0x00),
+#else
 	/* Tabla 1.1 MICBIAS changes */
 	TABLA_REG_VAL(TABLA_A_MICB_1_INT_RBIAS, 0x24),
 	TABLA_REG_VAL(TABLA_A_MICB_2_INT_RBIAS, 0x24),
 	TABLA_REG_VAL(TABLA_A_MICB_3_INT_RBIAS, 0x24),
-
+#endif
 	/* Tabla 1.1 HPH changes */
 	TABLA_REG_VAL(TABLA_A_RX_HPH_BIAS_PA, 0x57),
 	TABLA_REG_VAL(TABLA_A_RX_HPH_BIAS_LDO, 0x56),
@@ -7659,8 +7674,14 @@ static const struct tabla_reg_mask_val tabla_1_1_reg_defaults[] = {
 };
 
 static const struct tabla_reg_mask_val tabla_2_0_reg_defaults[] = {
+#ifdef CONFIG_KTTECH_SOUND
+	/* Initialize mic biases to DC-coupled mode */	
+	/* Tabla 2.0 MICBIAS changes */
+	TABLA_REG_VAL(TABLA_A_MICB_2_MBHC, 0x00),
+#else
 	/* Tabla 2.0 MICBIAS changes */
 	TABLA_REG_VAL(TABLA_A_MICB_2_MBHC, 0x02),
+#endif
 };
 
 static const struct tabla_reg_mask_val tabla_1_x_only_reg_2_0_defaults[] = {
@@ -7714,11 +7735,17 @@ static const struct tabla_reg_mask_val tabla_codec_reg_init_val[] = {
 	{TABLA_A_RX_LINE_2_GAIN, 0x10, 0x10},
 	{TABLA_A_RX_LINE_3_GAIN, 0x10, 0x10},
 	{TABLA_A_RX_LINE_4_GAIN, 0x10, 0x10},
-
+#ifdef CONFIG_KTTECH_SOUND
+	/* Initialize mic biases to DC-coupled mode */
+	{TABLA_A_MICB_1_INT_RBIAS, 0xFF, 0x00},
+	{TABLA_A_MICB_2_INT_RBIAS, 0xFF, 0x00},
+	{TABLA_A_MICB_3_INT_RBIAS, 0xFF, 0x00},
+#else
 	/* Initialize mic biases to differential mode */
 	{TABLA_A_MICB_1_INT_RBIAS, 0x24, 0x24},
 	{TABLA_A_MICB_2_INT_RBIAS, 0x24, 0x24},
 	{TABLA_A_MICB_3_INT_RBIAS, 0x24, 0x24},
+#endif
 
 	{TABLA_A_CDC_CONN_CLSG_CTL, 0x3C, 0x14},
 

@@ -70,7 +70,8 @@ int32_t msm_actuator_i2c_write(struct msm_actuator_ctrl_t *a_ctrl,
 	uint16_t value = 0;
 	uint32_t size = a_ctrl->reg_tbl_size, i = 0;
 	int32_t rc = 0;
-	CDBG("%s: IN\n", __func__);
+	//printk("%s: IN\n", __func__);
+
 	for (i = 0; i < size; i++) {
 		if (write_arr[i].reg_write_type == MSM_ACTUATOR_WRITE_DAC) {
 			value = (next_lens_position <<
@@ -113,7 +114,7 @@ int32_t msm_actuator_i2c_write(struct msm_actuator_ctrl_t *a_ctrl,
 		rc = msm_camera_i2c_write(&a_ctrl->i2c_client,
 			i2c_byte1, i2c_byte2, a_ctrl->i2c_data_type);
 	}
-		CDBG("%s: OUT\n", __func__);
+		//printk("%s: OUT\n", __func__);
 	return rc;
 }
 
@@ -123,7 +124,7 @@ int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 {
 	int32_t rc = -EFAULT;
 	int32_t i = 0;
-	CDBG("%s called\n", __func__);
+	printk("%s called\n", __func__);
 
 	for (i = 0; i < size; i++) {
 		switch (type) {
@@ -149,7 +150,7 @@ int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 	}
 
 	a_ctrl->curr_step_pos = 0;
-	CDBG("%s Exit:%d\n", __func__, rc);
+	printk("%s Exit:%d\n", __func__, rc);
 	return rc;
 }
 
@@ -232,7 +233,13 @@ int32_t msm_actuator_move_focus(
 	int dir = move_params->dir;
 	int32_t num_steps = move_params->num_steps;
 
-	CDBG("%s called, dir %d, num_steps %d\n",
+  #ifdef CONFIG_MACH_KTTECH
+  uint8_t code_val_msb, code_val_lsb;
+  uint16_t code_val;
+  uint8_t msb, lsb;
+  #endif
+
+	printk("%s called, dir %d, num_steps %d\n",
 		__func__,
 		dir,
 		num_steps);
@@ -240,9 +247,57 @@ int32_t msm_actuator_move_focus(
 	if (dest_step_pos == a_ctrl->curr_step_pos)
 		return rc;
 
+  #ifdef CONFIG_MACH_KTTECH  // kuzuri_jb_test - AF tuning from E100
+  /* Determine sign direction */
+	if (dir == MOVE_NEAR)
+		sign_dir = 32;	//modified by MCNEX
+	else if (dir == MOVE_FAR)
+		sign_dir = -32;	//modified by MCNEX
+	else {
+		pr_err("Illegal focus direction\n");
+		rc = -EINVAL;
+		return rc;
+	}
+	/* Determine destination step position */
+	dest_step_pos = a_ctrl->curr_step_pos +
+		(sign_dir * num_steps);
+
+	if (dest_step_pos < 0)
+		dest_step_pos = 0;
+	else if (dest_step_pos > 1023)
+		dest_step_pos = 1023;
+
+	if (dest_step_pos == a_ctrl->curr_step_pos)
+		return rc;
+
+	printk("kuzuri:: curr_step_pos= %d , dest_step_pos= %d\n", a_ctrl->curr_step_pos, dest_step_pos);
+	//dest_step_pos = next_lens_position;
+
+	code_val_msb = dest_step_pos >> 4;
+	code_val_lsb = (dest_step_pos & 0x000F) << 4;
+	code_val = (code_val_msb << 8) | (code_val_lsb) | 0xF/*slew-rate*/;	//modified by MCNEX
+	//rc = s5k4e5_wrapper_i2c_write(a_ctrl, code_val, NULL);
+
+	msb = (code_val & 0xFF00) >> 8;
+	lsb = code_val & 0xFF;
+	//printk(KERN_ERR "S5K4E5_write_AF_I2C():: msb= 0x%X ,lsb= 0x%X , pos= 0x%X\n", msb, lsb, code_val);
+	//s5k4e5_af_i2c_write_b_sensor(a_ctrl, msb, lsb);
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client,
+			msb, lsb, a_ctrl->i2c_data_type);
+    if (rc >= 0) {
+		rc = 0;
+		a_ctrl->curr_step_pos = dest_step_pos;
+	}
+	return rc;
+	// __end_kuzuri
+	#endif
+
+
 	curr_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
-	CDBG("curr_step_pos =%d dest_step_pos =%d curr_lens_pos=%d\n",
+	/*
+	printk("curr_step_pos =%d dest_step_pos =%d curr_lens_pos=%d\n",
 		a_ctrl->curr_step_pos, dest_step_pos, curr_lens_pos);
+	*/
 
 	while (a_ctrl->curr_step_pos != dest_step_pos) {
 		step_boundary =
@@ -312,7 +367,7 @@ int32_t msm_actuator_init_step_table(struct msm_actuator_ctrl_t *a_ctrl,
 	uint16_t step_boundary = 0;
 	uint32_t max_code_size = 1;
 	uint16_t data_size = set_info->actuator_params.data_size;
-	CDBG("%s called\n", __func__);
+	printk("%s called\n", __func__);
 
 	for (; data_size > 0; data_size--)
 		max_code_size *= 2;
@@ -366,7 +421,7 @@ int32_t msm_actuator_set_default_focus(
 	struct msm_actuator_move_params_t *move_params)
 {
 	int32_t rc = 0;
-	CDBG("%s called\n", __func__);
+	printk("%s called\n", __func__);
 
 	if (a_ctrl->curr_step_pos != 0)
 		rc = a_ctrl->func_tbl->actuator_move_focus(a_ctrl, move_params);
@@ -392,7 +447,7 @@ int32_t msm_actuator_init(struct msm_actuator_ctrl_t *a_ctrl,
 	struct reg_settings_t *init_settings = NULL;
 	int32_t rc = -EFAULT;
 	uint16_t i = 0;
-	CDBG("%s: IN\n", __func__);
+	printk("%s: IN\n", __func__);
 
 	for (i = 0; i < ARRAY_SIZE(actuators); i++) {
 		if (set_info->actuator_params.act_type ==
@@ -490,7 +545,7 @@ int32_t msm_actuator_config(struct msm_actuator_ctrl_t *a_ctrl,
 		sizeof(struct msm_actuator_cfg_data)))
 		return -EFAULT;
 	mutex_lock(a_ctrl->actuator_mutex);
-	CDBG("%s called, type %d\n", __func__, cdata.cfgtype);
+	printk("%s called, type %d\n", __func__, cdata.cfgtype);
 	switch (cdata.cfgtype) {
 	case CFG_SET_ACTUATOR_INFO:
 		rc = msm_actuator_init(a_ctrl, &cdata.cfg.set_info);
@@ -525,7 +580,7 @@ int32_t msm_actuator_i2c_probe(
 {
 	int rc = 0;
 	struct msm_actuator_ctrl_t *act_ctrl_t = NULL;
-	CDBG("%s called\n", __func__);
+	printk("%s called\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("i2c_check_functionality failed\n");
@@ -533,7 +588,7 @@ int32_t msm_actuator_i2c_probe(
 	}
 
 	act_ctrl_t = (struct msm_actuator_ctrl_t *)(id->driver_data);
-	CDBG("%s client = %x\n",
+	printk("%s client = %x\n",
 		__func__, (unsigned int) client);
 	act_ctrl_t->i2c_client.client = client;
 
@@ -546,7 +601,7 @@ int32_t msm_actuator_i2c_probe(
 		act_ctrl_t->i2c_client.client,
 		act_ctrl_t->act_v4l2_subdev_ops);
 
-	CDBG("%s succeeded\n", __func__);
+	printk("%s succeeded\n", __func__);
 	return rc;
 
 probe_failure:
@@ -557,14 +612,14 @@ probe_failure:
 int32_t msm_actuator_power_up(struct msm_actuator_ctrl_t *a_ctrl)
 {
 	int rc = 0;
-	CDBG("%s called\n", __func__);
+	printk("%s called\n", __func__);
 
-	CDBG("vcm info: %x %x\n", a_ctrl->vcm_pwd,
+	printk("vcm info: %x %x\n", a_ctrl->vcm_pwd,
 		a_ctrl->vcm_enable);
 	if (a_ctrl->vcm_enable) {
 		rc = gpio_request(a_ctrl->vcm_pwd, "msm_actuator");
 		if (!rc) {
-			CDBG("Enable VCM PWD\n");
+			printk("Enable VCM PWD\n");
 			gpio_direction_output(a_ctrl->vcm_pwd, 1);
 		}
 	}
@@ -590,7 +645,7 @@ static struct i2c_driver msm_actuator_i2c_driver = {
 static int __init msm_actuator_i2c_add_driver(
 	void)
 {
-	CDBG("%s called\n", __func__);
+	printk("%s called\n", __func__);
 	return i2c_add_driver(msm_actuator_t.i2c_driver);
 }
 

@@ -35,6 +35,10 @@
 #include "msm_watchdog.h"
 #include "timer.h"
 
+#ifdef CONFIG_MACH_KTTECH
+#include <mach/board.h>
+#endif
+
 #define WDT0_RST	0x38
 #define WDT0_EN		0x40
 #define WDT0_BARK_TIME	0x4C
@@ -50,8 +54,27 @@
 static int restart_mode;
 void *restart_reason;
 
+#ifdef CONFIG_MACH_KTTECH
+/* MSM_RESTART_MAGIC_ADDR */
+extern void msm_write_restart_reason(u32 restart_code); 
+#endif
+
 int pmic_reset_irq;
 static void __iomem *msm_tmr0_base;
+
+#ifdef CONFIG_MACH_KTTECH
+static int kttech_in_panic = 0;
+static int panic_kttech_restart(struct notifier_block *this,
+			      unsigned long event, void *ptr)
+{
+	kttech_in_panic = 1;
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block kttech_panic_blk = {
+	.notifier_call	= panic_kttech_restart,
+};
+#endif
 
 #ifdef CONFIG_MSM_DLOAD_MODE
 static int in_panic;
@@ -59,7 +82,11 @@ static void *dload_mode_addr;
 
 /* Download mode master kill-switch */
 static int dload_set(const char *val, struct kernel_param *kp);
+#ifdef CONFIG_MACH_KTTECH
+static int download_mode = 0;
+#else
 static int download_mode = 1;
+#endif
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
 
@@ -132,6 +159,13 @@ static void __msm_power_off(int lower_pshold)
 
 static void msm_power_off(void)
 {
+#ifdef CONFIG_MACH_KTTECH
+	printk(KERN_CRIT "msm_power_off \n");
+
+	/* MSM_RESTART_MAGIC_ADDR */
+	msm_write_restart_reason(0x6f656d10);
+#endif
+
 	/* MSM initiated power off, lower ps_hold */
 	__msm_power_off(1);
 }
@@ -197,8 +231,16 @@ void msm_restart(char mode, const char *cmd)
 		set_dload_mode(0);
 #endif
 
+#ifdef CONFIG_MACH_KTTECH
+	if (cmd != NULL)
+	{
+		printk(KERN_NOTICE "Going down for restart now. ( restart_reason = %s ) \n", cmd);
+	}else{
+		printk(KERN_NOTICE "Going down for restart now\n");
+	}
+#else
 	printk(KERN_NOTICE "Going down for restart now\n");
-
+#endif
 	pm8xxx_reset_pwr_off(1);
 
 	if (cmd != NULL) {
@@ -210,10 +252,35 @@ void msm_restart(char mode, const char *cmd)
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
 			__raw_writel(0x6f656d00 | code, restart_reason);
+#ifdef CONFIG_MACH_KTTECH			
+		} else if (!strncmp(cmd, "dload", 5)) {
+			set_dload_mode( 1 );
+			__raw_writel(0x77665501, restart_reason);  	
+			mb();
+#endif
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
+#ifdef CONFIG_MACH_KTTECH
+        if(get_kttech_ftm_mode() && (!strncmp(cmd, "ftm", 3))) // FTM Mode Reboot
+        {
+            __raw_writel(0x6f656d00 | get_kttech_ftm_mode(), restart_reason);
+        }
+        mb(); // Cache Flush Before io unmap
+#endif
 	}
+#ifdef CONFIG_MACH_KTTECH
+	else{
+
+		if(kttech_in_panic){
+			__raw_writel(0x77665503, restart_reason); // KTTECH_PANIC_RESTART_MODE
+			kttech_in_panic = 0;
+		}else{
+			__raw_writel(0x77665501, restart_reason); //RESET_MODE
+		}
+		mb();
+	}
+#endif
 
 	__raw_writel(0, msm_tmr0_base + WDT0_EN);
 	if (!(machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())) {
@@ -253,6 +320,9 @@ late_initcall(msm_pmic_restart_init);
 
 static int __init msm_restart_init(void)
 {
+#ifdef CONFIG_MACH_KTTECH
+	atomic_notifier_chain_register(&panic_notifier_list, &kttech_panic_blk);
+#endif
 #ifdef CONFIG_MSM_DLOAD_MODE
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 	dload_mode_addr = MSM_IMEM_BASE + DLOAD_MODE_ADDR;
@@ -260,6 +330,9 @@ static int __init msm_restart_init(void)
 #endif
 	msm_tmr0_base = msm_timer_get_timer0_base();
 	restart_reason = MSM_IMEM_BASE + RESTART_REASON_ADDR;
+#ifdef CONFIG_MACH_KTTECH
+	__raw_writel(0x77665504, restart_reason);//initial restart_reason for detecting wathchdog reset
+#endif	
 	pm_power_off = msm_power_off;
 
 	return 0;

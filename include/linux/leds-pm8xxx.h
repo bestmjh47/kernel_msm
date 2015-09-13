@@ -132,4 +132,11 @@ struct pm8xxx_led_platform_data {
 	struct	pm8xxx_led_config	*configs;
 	u32				num_configs;
 };
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+int pm8xxx_led_kp_set(int value);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 #endif /* __LEDS_PM8XXX_H__ */

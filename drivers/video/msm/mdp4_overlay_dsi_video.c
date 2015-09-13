@@ -274,7 +274,11 @@ void mdp4_dsi_video_vsync_ctrl(struct fb_info *info, int enable)
 	if (vctrl->vsync_irq_enabled == enable)
 		return;
 
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+	pr_debug("%s: vsync enable=%d\n", __func__, enable);
+#else
 	pr_info("%s: vsync enable=%d\n", __func__, enable);
+#endif
 
 	vctrl->vsync_irq_enabled = enable;
 

@@ -104,6 +104,13 @@ struct msm_camera_sensor_flash_pmic {
 	enum pmic8058_leds led_src_1;
 	enum pmic8058_leds led_src_2;
 	int (*pmic_set_current)(enum pmic8058_leds id, unsigned mA);
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+	int (*pmic_set_current_kb_light)(int value);
+	//int (*pmic_set_current_kb_light)(enum led_brightness value);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 };
 
 struct msm_camera_sensor_flash_pwm {
@@ -619,5 +626,33 @@ void msm_snddev_tx_route_deconfig(void);
 
 extern unsigned int msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
 
+#ifdef CONFIG_MACH_KTTECH
+enum HW_VER_CHECK_E {
+  NONE_HW_VER   = (-1),
+  PT_HW_VER        = (0),
+  ES1_HW_VER      = (1),
+  ES2_HW_VER      = (2),
+  PP1_HW_VER      = (3),
+  PP2_HW_VER      = (4),
+  MP1_HW_VER      = (5),
+  MP2_HW_VER      = (6),
+  MAX_HW_VER,
+};
+
+enum KTTECH_FTM_MODE_E {
+  KTTECH_FTM_MODE_NONE = (0),
+  NORMAL_MODE          = (1),
+  FTM_MODE_NO_LCD      = (2),
+  FTM_MODE_1           = (3),
+  FTM_MODE_2           = (4),
+  FTM_MODE_3           = (5),
+  FTM_MODE_ERASE_NFAT  = (6),
+  FTM_MODE_5           = (7),
+  FTM_MODE_MAX,
+};
+
+int get_kttech_hw_version(void);
+int get_kttech_ftm_mode(void);
+#endif
 
 #endif

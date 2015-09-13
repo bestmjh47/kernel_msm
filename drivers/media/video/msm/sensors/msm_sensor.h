@@ -136,6 +136,18 @@ struct msm_sensor_fn_t {
 		(struct msm_sensor_ctrl_t *);
 	int (*sensor_power_up) (struct msm_sensor_ctrl_t *);
 	int32_t (*sensor_match_id)(struct msm_sensor_ctrl_t *s_ctrl);
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_WB */
+#if 1
+	int (*sensor_set_wb) (struct msm_sensor_ctrl_t *, int);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_BRIGHTNESS */
+#if 1
+	int (*sensor_set_brightness) (struct msm_sensor_ctrl_t *, int);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 	int (*sensor_adjust_frame_lines)
 		(struct msm_sensor_ctrl_t *s_ctrl, uint16_t res);
 	int32_t (*sensor_get_csi_params)(struct msm_sensor_ctrl_t *,
@@ -211,6 +223,19 @@ int32_t msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl);
 int32_t msm_sensor_power_down(struct msm_sensor_ctrl_t *s_ctrl);
 
 int32_t msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl);
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_WB */
+#if 1
+int msm_sensor_set_wb(struct msm_sensor_ctrl_t *s_ctrl, int wb);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_BRIGHTNESS */
+#if 1
+int msm_sensor_set_brightness(struct msm_sensor_ctrl_t *s_ctrl, int brightness);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
 int msm_sensor_i2c_probe(struct i2c_client *client,
 	const struct i2c_device_id *id);
 int32_t msm_sensor_power(struct v4l2_subdev *sd, int on);

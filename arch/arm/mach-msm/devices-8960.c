@@ -1286,7 +1286,12 @@ struct platform_device msm_device_bam_dmux = {
 
 static struct msm_watchdog_pdata msm_watchdog_pdata = {
 	.pet_time = 10000,
+#ifdef CONFIG_MACH_KTTECH
+	.bark_time = 15000,
+#else
 	.bark_time = 11000,
+#endif
+
 	.has_secure = true,
 };
 
@@ -1484,6 +1489,37 @@ struct platform_device msm8960_device_qup_i2c_gsbi12 = {
 	.num_resources	= ARRAY_SIZE(resources_qup_i2c_gsbi12),
 	.resource	= resources_qup_i2c_gsbi12,
 };
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+static struct resource resources_qup_i2c_gsbi1[] = {
+	{
+		.name	= "gsbi_qup_i2c_addr",
+		.start	= MSM_GSBI1_PHYS,
+		.end	= MSM_GSBI1_PHYS + 4 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "qup_phys_addr",
+		.start	= MSM_GSBI1_QUP_PHYS,
+		.end	= MSM_GSBI1_QUP_PHYS + MSM_QUP_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "qup_err_intr",
+		.start	= MSM8960_GSBI1_QUP_IRQ,
+		.end	= MSM8960_GSBI1_QUP_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_device_qup_i2c_gsbi1 = {
+	.name		= "qup_i2c",
+	.id		= 1,
+	.num_resources	= ARRAY_SIZE(resources_qup_i2c_gsbi1),
+	.resource	= resources_qup_i2c_gsbi1,
+};
+#endif
+
 
 #ifdef CONFIG_MSM_CAMERA
 static struct resource msm_cam_gsbi4_i2c_mux_resources[] = {
@@ -1827,6 +1863,7 @@ struct platform_device msm8960_device_ssbi_pmic = {
 	.num_resources  = ARRAY_SIZE(resources_ssbi_pmic),
 };
 
+#ifndef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
 static struct resource resources_qup_spi_gsbi1[] = {
 	{
 		.name   = "spi_base",
@@ -1884,6 +1921,73 @@ struct platform_device msm8960_device_qup_spi_gsbi1 = {
 	.num_resources	= ARRAY_SIZE(resources_qup_spi_gsbi1),
 	.resource	= resources_qup_spi_gsbi1,
 };
+#endif
+
+#if defined(CONFIG_KTTECH_TDMB_SERVICE)
+static struct resource resources_qup_spi_gsbi9[] = {
+	{
+		.name   = "spi_base",
+		.start  = MSM_GSBI9_QUP_PHYS,
+		.end    = MSM_GSBI9_QUP_PHYS + SZ_4K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.name   = "gsbi_base",
+		.start  = MSM_GSBI9_PHYS,
+		.end    = MSM_GSBI9_PHYS + 4 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.name   = "spi_irq_in",
+		.start  = GSBI9_QUP_IRQ,
+		.end    = GSBI9_QUP_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+	{
+		.name = "spidm_channels",
+		.start	= 9,
+		.end	= 10,
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.name = "spidm_crci",
+		.start	= 12,
+		.end	= 13,
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.name   = "spi_clk",
+		.start  = 96,
+		.end    = 96,
+		.flags  = IORESOURCE_IO,
+	},
+	{
+		.name   = "spi_miso",
+		.start  = 94,
+		.end    = 94,
+		.flags  = IORESOURCE_IO,
+	},
+	{
+		.name   = "spi_mosi",
+		.start  = 93,
+		.end    = 93,
+		.flags  = IORESOURCE_IO,
+	},
+	{
+		.name   = "spi_cs",
+		.start  = 95,
+		.end    = 95,
+		.flags  = IORESOURCE_IO,
+	},
+};
+
+struct platform_device msm8960_device_qup_spi_gsbi9 = {
+	.name   = "spi_qsd",
+	.id     = 1,
+	.num_resources  = ARRAY_SIZE(resources_qup_spi_gsbi9),
+	.resource       = resources_qup_spi_gsbi9,
+};
+#endif
 
 struct platform_device msm_pcm = {
 	.name	= "msm-pcm-dsp",

@@ -78,6 +78,9 @@
 #endif
 
 #include <linux/smsc3503.h>
+#ifdef CONFIG_KTTECH_PN544_NFC
+#include <linux/nfc/pn544-kttech.h>
+#endif
 #include <linux/ion.h>
 #include <mach/ion.h>
 #include <mach/mdm2.h>
@@ -139,7 +142,7 @@ struct sx150x_platform_data msm8960_sx150x_data[] = {
 #endif
 
 #define MSM_PMEM_ADSP_SIZE         0x7800000
-#define MSM_PMEM_AUDIO_SIZE        0x4CF000
+#define MSM_PMEM_AUDIO_SIZE        0x600000 /* KT Tech : 4->6MB */
 #define MSM_PMEM_SIZE 0x2800000 /* 40 Mbytes */
 #define MSM_LIQUID_PMEM_SIZE 0x4000000 /* 64 Mbytes */
 #define MSM_HDMI_PRIM_PMEM_SIZE 0x4000000 /* 64 Mbytes */
@@ -646,12 +649,15 @@ static void __init reserve_ion_memory(void)
 		msm8960_fmem_pdata.reserved_size_low = fixed_low_size +
 							HOLE_SIZE;
 		msm8960_fmem_pdata.reserved_size_high = fixed_high_size;
+		// KT Tech : Fix for incorrect FMEM and mm heap sizes on MSM8960.
+		msm8960_fmem_pdata.size += HOLE_SIZE;
 	}
 
 	/* Since the fixed area may be carved out of lowmem,
 	 * make sure the length is a multiple of 1M.
 	 */
-	fixed_size = (fixed_size + MSM_MM_FW_SIZE + SECTION_SIZE - 1)
+	// KT Tech : Fix for incorrect FMEM and mm heap sizes on MSM8960.
+	fixed_size = (fixed_size + HOLE_SIZE + SECTION_SIZE - 1)
 		& SECTION_MASK;
 	msm8960_reserve_fixed_area(fixed_size);
 
@@ -820,8 +826,9 @@ static void __init msm8960_reserve(void)
 	if (msm8960_fmem_pdata.size) {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
 		if (reserve_info->fixed_area_size) {
+			// KT Tech : Fix for incorrect FMEM and mm heap sizes on MSM8960.
 			msm8960_fmem_pdata.phys =
-				reserve_info->fixed_area_start + MSM_MM_FW_SIZE;
+				reserve_info->fixed_area_start;
 			pr_info("mm fw at %lx (fixed) size %x\n",
 				reserve_info->fixed_area_start, MSM_MM_FW_SIZE);
 			pr_info("fmem start %lx (fixed) size %lx\n",
@@ -937,10 +944,17 @@ static struct wcd9xxx_pdata tabla20_platform_data = {
 		.cfilt1_mv = 1800,
 		.cfilt2_mv = 2700,
 		.cfilt3_mv = 1800,
+#if 0 //def CONFIG_KTTECH_SOUND		
+		.bias1_cfilt_sel = TABLA_CFILT2_SEL,
+		.bias2_cfilt_sel = TABLA_CFILT2_SEL,
+		.bias3_cfilt_sel = TABLA_CFILT2_SEL,
+		.bias4_cfilt_sel = TABLA_CFILT2_SEL,
+#else		
 		.bias1_cfilt_sel = TABLA_CFILT1_SEL,
 		.bias2_cfilt_sel = TABLA_CFILT2_SEL,
 		.bias3_cfilt_sel = TABLA_CFILT3_SEL,
 		.bias4_cfilt_sel = TABLA_CFILT3_SEL,
+#endif		
 	},
 	.regulator = {
 	{
@@ -1416,10 +1430,12 @@ static void __init msm8960_init_buses(void)
 #endif
 }
 
+#if !defined(CONFIG_KTTECH_BATTERY_GAUGE_MAXIM)
 static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 	.max_clock_speed = 15060000,
 	.infinite_mode	 = 0xFFC0,
 };
+#endif
 
 #ifdef CONFIG_USB_MSM_OTG_72K
 static struct msm_otg_platform_data msm_otg_pdata;
@@ -1823,6 +1839,7 @@ static struct i2c_board_info msm_isa1200_board_info[] __initdata = {
 	},
 };
 
+#ifndef CONFIG_KTTECH_TOUCH_MMS100
 #define CYTTSP_TS_GPIO_IRQ		11
 #define CYTTSP_TS_SLEEP_GPIO		50
 #define CYTTSP_TS_RESOUT_N_GPIO		52
@@ -1944,7 +1961,7 @@ static struct i2c_board_info cyttsp_info[] __initdata = {
 #endif /* CY_USE_TIMER */
 	},
 };
-
+#endif
 /* configuration data for mxt1386 */
 static const u8 mxt1386_config_data[] = {
 	/* T6 Object */
@@ -2291,6 +2308,15 @@ static struct msm_mhl_platform_data mhl_platform_data = {
 	.gpio_hdmi_mhl_mux = 0,
 };
 
+#ifdef CONFIG_KTTECH_TOUCH_MMS100
+static struct i2c_board_info mms100_boardinfo[] __initdata = {
+    {   I2C_BOARD_INFO("melfas-ts", 0x48),
+        .platform_data = NULL,
+        .irq  = MSM_GPIO_TO_INT(11),
+    },
+};
+#endif
+
 static struct i2c_board_info sii_device_info[] __initdata = {
 	{
 #ifdef CONFIG_FB_MSM_HDMI_MHL_8334
@@ -2309,15 +2335,140 @@ static struct i2c_board_info sii_device_info[] __initdata = {
 	},
 };
 
+
+#ifdef CONFIG_KTTECH_PN544_NFC
+static int pn544_setup_power (struct device *dev)
+{
+  return 0;
+}
+
+static void pn544_shutdown_power(struct device *dev)
+{
+
+}
+
+#define PN544_RST_GPIO 80
+#define PN544_FIRMUP_GPIO 81
+#define PN544_CLK_REQ_GPIO 146 // 192M clk 
+#define PN544_IRQ_GPIO 106
+static int pn544_setup_gpio(int enable)
+{
+  int status = 0;
+  int rc;
+
+  printk(KERN_INFO"%s: %d\n", __func__,enable);
+
+  rc = gpio_tlmm_config(GPIO_CFG(PN544_RST_GPIO, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+
+  if (rc) {
+    printk(KERN_INFO "%s: PN544_RST_GPIO gpio %d request or tlmm_config"
+                                "failed\n", __func__,
+                                PN544_RST_GPIO);
+    goto gpio_free_rst;
+  }
+
+
+  rc = gpio_tlmm_config(GPIO_CFG(PN544_FIRMUP_GPIO, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+
+  if (rc) {
+    printk(KERN_INFO "%s: PN544_FIRMUP_GPIO gpio %d request or tlmm_config"
+                                "failed\n", __func__,
+                                PN544_FIRMUP_GPIO);
+    goto gpio_free_firmup;
+  }
+
+  rc = gpio_tlmm_config(GPIO_CFG(PN544_IRQ_GPIO, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+
+  if (rc) {
+    printk(KERN_INFO "%s: PN544_IRQ_GPIO gpio request or tlmm_config"
+                                "failed\n", __func__);
+    gpio_free(PN544_IRQ_GPIO);
+    return status;
+  }
+
+  gpio_set_value(PN544_RST_GPIO, 1);
+  gpio_set_value(PN544_FIRMUP_GPIO, 1);
+  msleep(20);
+  gpio_set_value(PN544_RST_GPIO, 0);
+  msleep(60);
+  gpio_set_value(PN544_RST_GPIO, 1);
+  msleep(20);
+
+  return status;
+
+gpio_free_rst:
+  gpio_free(PN544_RST_GPIO);
+
+gpio_free_firmup:
+  gpio_free(PN544_FIRMUP_GPIO);
+
+  return status;
+}
+
+static struct pn544_i2c_platform_data nxpchip_platform_data = {	
+  .irq_gpio = PN544_IRQ_GPIO,
+  .ven_gpio = PN544_RST_GPIO,
+  .firm_gpio = PN544_FIRMUP_GPIO,
+  .setup_power = pn544_setup_power,
+  .shutdown_power = pn544_shutdown_power,
+  .setup_gpio = pn544_setup_gpio,
+};
+
+static struct i2c_board_info nxp_chipinfo[] __initdata = {	
+  {
+	I2C_BOARD_INFO("pn544", 0x28),
+	.platform_data = &nxpchip_platform_data, 
+	.irq  = MSM_GPIO_TO_INT(PN544_IRQ_GPIO),
+   },
+};
+#endif/* jake for NFC ------------------------------------------------*/
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+#define MAX17410_SLAVE_ADDR			0x36
+static struct i2c_board_info max17040_i2c_info[] __initdata = {	
+  {
+	I2C_BOARD_INFO("max17040", MAX17410_SLAVE_ADDR),
+   },
+};
+#endif
+
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi4_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
 };
 
+static void gsbi_qup_i2c_gpio_config(int adap_id, int config_type)
+{
+}
+
+#if defined(CONFIG_KTTECH_TOUCH_MMS100)
+static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi3_pdata = {
+    .clk_freq = 400000,
+    .src_clk_rate = 24000000,
+    .msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
+};
+#else
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi3_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
 };
+#endif
+
+#ifdef CONFIG_KTTECH_TDMB_SERVICE
+static struct msm_spi_platform_data msm8960_qup_spi_gsbi9_pdata = {
+	.max_clock_speed = 10800000, //12000000,
+};
+
+static struct spi_board_info msm_dmb_spi_board_info[] __initdata = {
+	{
+		.modalias       = "tdmb",
+		.mode           = SPI_MODE_0,
+		.bus_num        = 1,
+		.chip_select    = 0,
+		.max_speed_hz   = 10800000,
+		.platform_data = &msm8960_qup_spi_gsbi9_pdata
+	},
+};
+#endif
 
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi10_pdata = {
 	.clk_freq = 100000,
@@ -2329,12 +2480,20 @@ static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
 	.src_clk_rate = 24000000,
 };
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi1_pdata = {
+	.clk_freq = 100000,
+	.src_clk_rate = 24000000,
+};
+#endif
+
 static struct msm_pm_sleep_status_data msm_pm_slp_sts_data = {
 	.base_addr = MSM_ACC0_BASE + 0x08,
 	.cpu_offset = MSM_ACC1_BASE - MSM_ACC0_BASE,
 	.mask = 1UL << 13,
 };
 
+#ifndef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
 static struct ks8851_pdata spi_eth_pdata = {
 	.irq_gpio = KS8851_IRQ_GPIO,
 	.rst_gpio = KS8851_RST_GPIO,
@@ -2358,6 +2517,7 @@ static struct spi_board_info spi_board_info[] __initdata = {
 		.mode                   = SPI_MODE_0,
 	},
 };
+#endif
 
 static struct platform_device msm_device_saw_core0 = {
 	.name          = "saw-regulator",
@@ -2442,6 +2602,7 @@ static struct platform_device msm8960_device_rpm_regulator __devinitdata = {
 		.platform_data = &msm_rpm_regulator_pdata,
 	},
 };
+#ifndef CONFIG_KTTECH_TDMB_SERVICE
 #ifdef CONFIG_SERIAL_MSM_HS
 static int configure_uart_gpios(int on)
 {
@@ -2473,22 +2634,91 @@ static struct msm_serial_hs_platform_data msm_uart_dm9_pdata = {
 #else
 static struct msm_serial_hs_platform_data msm_uart_dm9_pdata;
 #endif
+#endif
+
+#ifdef CONFIG_MACH_KTTECH
+static int kttech_hw_ver = 0;
+static int kttech_is_ftm = 0;
+
+static int __init kttech_hw_ver_setup(char *support)
+{
+    kttech_hw_ver = support[0]-'0';
+
+	return 1;
+}
+__setup("kttech_hw_ver=", kttech_hw_ver_setup);
+int get_kttech_hw_version(void)
+{
+  return kttech_hw_ver;
+}
+EXPORT_SYMBOL(get_kttech_hw_version);
+
+static int __init kttech_ftm_mode_setup(char *support)
+{
+    kttech_is_ftm = support[0]-'0';
+
+	return 1;
+}
+__setup("kttech_ftm=", kttech_ftm_mode_setup);
+int get_kttech_ftm_mode(void)
+{
+  return (kttech_is_ftm&0x03); // Remove Factory nFAT Reset Flags
+}
+EXPORT_SYMBOL(get_kttech_ftm_mode);
+
+
+static int kttech_is_recovery = 0;
+
+static int __init kttech_recovery_mode_setup(char *support)
+{
+    kttech_is_recovery = support[0]-'0';
+
+	return 1;
+}
+__setup("kttech_recovery=", kttech_recovery_mode_setup);
+int get_kttech_recovery_mode(void)
+{
+  return kttech_is_recovery;
+}
+EXPORT_SYMBOL(get_kttech_recovery_mode);
+
+#endif
+
+
+#ifdef CONFIG_MACH_KTTECH
+extern struct platform_device ram_console_device;
+#endif
 
 static struct platform_device *common_devices[] __initdata = {
+#ifdef CONFIG_MACH_KTTECH
+	&ram_console_device,
+#endif
 	&msm8960_device_acpuclk,
 	&msm8960_device_dmov,
 	&msm_device_smd,
 	&msm_device_uart_dm6,
+#ifndef CONFIG_KTTECH_TDMB_SERVICE
 	&msm_device_uart_dm9,
+#endif
 	&msm_device_saw_core0,
 	&msm_device_saw_core1,
 	&msm8960_device_ext_5v_vreg,
 	&msm8960_device_ssbi_pmic,
 	&msm8960_device_ext_otg_sw_vreg,
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	&msm8960_device_qup_i2c_gsbi1,
+#else
 	&msm8960_device_qup_spi_gsbi1,
+#endif
 	&msm8960_device_qup_i2c_gsbi3,
 	&msm8960_device_qup_i2c_gsbi4,
+//namjja
+	#if defined(CONFIG_KTTECH_TDMB_SERVICE)
+	&msm8960_device_qup_spi_gsbi9,
+	#endif
+#if defined(CONFIG_KTTECH_PN544_NFC)
 	&msm8960_device_qup_i2c_gsbi10,
+#endif	
 #ifndef CONFIG_MSM_DSPS
 	&msm8960_device_qup_i2c_gsbi12,
 #endif
@@ -2695,6 +2925,12 @@ static void __init msm8960_i2c_init(void)
 
 	msm8960_device_qup_i2c_gsbi12.dev.platform_data =
 					&msm8960_i2c_qup_gsbi12_pdata;
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	msm8960_device_qup_i2c_gsbi1.dev.platform_data =
+					&msm8960_i2c_qup_gsbi1_pdata;
+#endif
+
 }
 
 static void __init msm8960_gfx_init(void)
@@ -2917,12 +3153,21 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		ARRAY_SIZE(isl_charger_i2c_info),
 	},
 #endif /* CONFIG_ISL9519_CHARGER */
+#if defined(CONFIG_KTTECH_TOUCH_MMS100)
+	{
+		I2C_SURF | I2C_FFA | I2C_FLUID,
+		MSM_8960_GSBI3_QUP_I2C_BUS_ID,
+		mms100_boardinfo,
+		ARRAY_SIZE(mms100_boardinfo),
+	},
+#else
 	{
 		I2C_SURF | I2C_FFA | I2C_FLUID,
 		MSM_8960_GSBI3_QUP_I2C_BUS_ID,
 		cyttsp_info,
 		ARRAY_SIZE(cyttsp_info),
 	},
+#endif
 	{
 		I2C_LIQUID,
 		MSM_8960_GSBI3_QUP_I2C_BUS_ID,
@@ -2947,6 +3192,22 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		liquid_io_expander_i2c_info,
 		ARRAY_SIZE(liquid_io_expander_i2c_info),
 	},
+#if defined(CONFIG_KTTECH_PN544_NFC)
+    {
+		I2C_SURF | I2C_FFA | I2C_FLUID,
+		MSM_8960_GSBI10_QUP_I2C_BUS_ID,
+		nxp_chipinfo,
+		ARRAY_SIZE(nxp_chipinfo),
+	},
+#endif
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	{
+		I2C_SURF | I2C_FFA | I2C_FLUID,
+		MSM_8960_GSBI1_QUP_I2C_BUS_ID,
+		max17040_i2c_info,
+		ARRAY_SIZE(max17040_i2c_info),
+	},
+#endif
 };
 #endif /* CONFIG_I2C */
 
@@ -3034,9 +3295,11 @@ static void __init msm8960_sim_init(void)
 	msm8960_pm8921_gpio_mpp_init();
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 
+#if !defined(CONFIG_KTTECH_BATTERY_GAUGE_MAXIM)
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
+#endif
 
 	msm8960_init_mmc();
 	msm8960_init_fb();
@@ -3056,9 +3319,13 @@ static void __init msm8960_rumi3_init(void)
 	platform_device_register(&msm8960_device_rpm_regulator);
 	msm8960_init_gpiomux();
 	msm8960_init_pmic();
+
+#if !defined(CONFIG_KTTECH_BATTERY_GAUGE_MAXIM)
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
+#endif
+
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	msm_spm_l2_init(msm_spm_l2_data);
@@ -3108,9 +3375,18 @@ static void __init msm8960_cdp_init(void)
 					machine_is_msm8960_liquid())
 		msm_device_hsic_host.dev.parent = &smsc_hub_device.dev;
 	msm8960_init_gpiomux();
+
+#if !defined(CONFIG_KTTECH_BATTERY_GAUGE_MAXIM)
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
+#endif
+
+	#if defined(CONFIG_KTTECH_TDMB_SERVICE)
+	msm8960_device_qup_spi_gsbi9.dev.platform_data =
+			       &msm8960_qup_spi_gsbi9_pdata;
+	spi_register_board_info(msm_dmb_spi_board_info, ARRAY_SIZE(msm_dmb_spi_board_info));
+	#endif
 
 	msm8960_init_pmic();
 	if ((SOCINFO_VERSION_MAJOR(socinfo_get_version()) >= 2 &&
@@ -3132,11 +3408,13 @@ static void __init msm8960_cdp_init(void)
 	else
 		platform_device_register(&msm8960_device_uart_gsbi5);
 
+#ifndef CONFIG_KTTECH_TDMB_SERVICE
 	/* For 8960 Fusion 2.2 Primary IPC */
 	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_SGLTE) {
 		msm_uart_dm9_pdata.wakeup_irq = gpio_to_irq(94); /* GSBI9(2) */
 		msm_device_uart_dm9.dev.platform_data = &msm_uart_dm9_pdata;
 	}
+#endif
 
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	msm8960_pm8921_gpio_mpp_init();

@@ -49,6 +49,21 @@
 #include "mdp.h"
 #include "mdp4.h"
 
+#include "tps61161_bl.h"
+
+//#define CONFIG_KTTECH_LOGO /* KT Tech 2012.12.06 undefine */
+//#define CONFIG_FB_MSM_LOGO
+
+#ifdef CONFIG_KTTECH_LOGO
+#include "mipi_dsi.h"
+#endif
+
+#ifdef CONFIG_FB_MSM_LOGO
+
+#define INIT_IMAGE_FILE "/initlogo.rle"
+extern int load_565rle_image(char *filename);
+#endif
+
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MSM_FB_NUM	3
 #endif
@@ -61,7 +76,9 @@ static boolean bf_supported;
  * pan display on the panel. This is to avoid panel specific
  * transients during resume.
  */
-unsigned long backlight_duration = (HZ/20);
+// KT Tech : Modify BL Duration.
+//unsigned long backlight_duration = (HZ/20);
+unsigned long backlight_duration = 1;
 
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
@@ -153,6 +170,126 @@ void msm_fb_debugfs_file_create(struct dentry *root, const char *name,
 	    debugfs_create_u32(name, S_IRUGO | S_IWUSR, root, var);
 }
 #endif
+
+#ifdef CONFIG_KTTECH_LOGO
+// KTT_UPDATE : 
+// DESCRIPTION : PRINT RGB888 RAW DATA IMAGE ( init logo )
+// S=========================================================================
+#include <linux/syscalls.h>
+
+
+#define INIT_IMAGE_FILE "/initlogo.rle"
+#define INIT_IMAGE_WIDTH  470
+#define INIT_IMAGE_HEIGHT 90
+
+#define FTM_IMAGE_FILE "/ftmlogo.raw"
+#define FTM_IMAGE_WIDTH  240
+#define FTM_IMAGE_HEIGHT 320
+
+#define fb_width(fb)	((fb)->var.xres)
+#define fb_height(fb)	((fb)->var.yres)
+#define fb_size(fb)	((fb)->var.xres * (fb)->var.yres * 2)
+
+
+static __u32 msm_fb_line_length(__u32 fb_index, __u32 xres, int bpp);
+
+static int isFirst = 1;
+
+
+static void memset32_io(u32 __iomem *_ptr, u32 val, size_t count)
+{
+	count >>= 2;
+	while (count--)
+		writel(val, _ptr++);
+}
+
+
+static int print_rgb888_image(struct fb_info *fbi, char *filename , int x , int y , int nWidth , int nHeight )
+{
+	int i, j , m , bpp;
+//	int nLine;
+	int fd, count, err = 0;
+	char *data;
+	unsigned char *bits, *ptr;
+
+	if( !fbi ) 
+	{
+		printk(KERN_ERR "%s: Can not access framebuffer\n", __func__);
+		return -ENODEV;
+	}
+
+	fd = sys_open(filename, O_RDONLY, 0);
+	if (fd < 0) 
+	{
+		printk(KERN_ERR "%s: Can not open %s\n", __func__, filename);
+		return -ENOENT;
+	}
+
+//	printk(KERN_ERR "%s: width = %d , height = %d \n", __func__, nWidth , nHeight );
+
+	count = sys_lseek(fd, (off_t)0 , 2);
+
+	if (count <= 0) 
+	{
+		printk(KERN_ERR "%s: Size Error %s\n", __func__, filename);
+		err = -EIO;
+		goto err_logo_close_file;
+	}	
+
+	sys_lseek(fd, (off_t)0 , 0);
+
+	data = kmalloc( count, GFP_KERNEL);
+	
+	if (!data) 
+	{
+		printk(KERN_ERR "%s: Can not alloc data\n", __func__);
+		err = -ENOMEM;
+		goto err_logo_close_file;
+	}
+	
+	if (sys_read(fd, (char *)data, count) != count) 
+	{
+		printk(KERN_ERR "%s: Read Error %s\n",
+			__func__, filename);
+		err = -EIO;
+		goto err_logo_free_data;
+	}
+	
+	i = 0;
+	j = 0;
+	m = 0;
+	bpp = fbi->var.bits_per_pixel / 8;
+
+	memset32_io((void *)fbi->screen_base, 0xFF000000, fbi->fix.smem_len );
+
+	ptr = (unsigned char *)data;
+	for ( i = 0 ; i < nHeight ; i ++ )
+	{
+		bits = (unsigned char *)fbi->screen_base + ( ( x * bpp ) + ( ( y + i ) * fbi->fix.line_length ) );
+
+		for ( j = 0 ; j < nWidth ; j ++ )
+		{
+			*bits++ = *ptr++;
+			*bits++ = *ptr++;
+			*bits++ = *ptr++;    
+			*bits++ = 0xFF;
+		}
+	}
+
+	clean_caches((unsigned long)fbi->screen_base,
+				(unsigned long)fbi->fix.smem_len,
+				(unsigned long)fbi->fix.smem_start);
+
+ 
+err_logo_free_data:
+	kfree(data);
+err_logo_close_file:
+	sys_close(fd);
+	return err;
+}
+#endif
+// E=========================================================================
+
 
 int msm_fb_cursor(struct fb_info *info, struct fb_cursor *cursor)
 {
@@ -419,6 +556,57 @@ static int msm_fb_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 	msm_fb_create_sysfs(pdev);
+
+#ifdef CONFIG_KTTECH_LOGO //for fast lcd update
+	if(isFirst)
+	{
+#ifdef CONFIG_KTTECH_TPS61161_BL
+		tps61161_set_bl_native( 0 );
+#endif
+
+		mfd->cont_splash_done = 1;
+
+		//mipi_dsi_phy_ctrl( 0 );
+		//msleep(100);
+
+		if(!msm_fb_open(mfd->fbi, 0))
+		{
+			if(get_kttech_ftm_mode() == NORMAL_MODE) 
+				print_rgb888_image(mfd->fbi,
+								FTM_IMAGE_FILE , 
+								( mfd->var_xres/2) - ( FTM_IMAGE_WIDTH/2 ), 
+								( mfd->var_yres/2)-( FTM_IMAGE_HEIGHT/2 ), 
+								FTM_IMAGE_WIDTH,
+								FTM_IMAGE_HEIGHT );
+			else 
+				print_rgb888_image(mfd->fbi,
+								INIT_IMAGE_FILE,
+								( mfd->var_xres/2) - ( INIT_IMAGE_WIDTH/2 ),
+								( mfd->var_yres/2)-( INIT_IMAGE_HEIGHT/2 ),
+								INIT_IMAGE_WIDTH,
+								INIT_IMAGE_HEIGHT );
+
+			// ADD KTTECH : goldhand ( 2012/3/13 ) 
+			mdp4_dsi_video_overlay( mfd );
+		}
+		else {
+			if(get_kttech_ftm_mode() == NORMAL_MODE) 
+				printk(KERN_ERR "%s : Init loge Raw Image File(%s) Open Fail\n", __func__ , FTM_IMAGE_FILE );
+			else
+				printk(KERN_ERR "%s : Init loge Raw Image File(%s) Open Fail\n", __func__ , INIT_IMAGE_FILE );
+		}
+		isFirst = 0;  	    
+	}
+
+#ifdef CONFIG_KTTECH_TPS61161_BL
+	if ( get_kttech_hw_version() >= ES2_HW_VER )
+		tps61161_set_bl_native( 120 );
+	else
+		tps61161_set_bl_native( 17 );
+#endif
+
+#endif
+
 	return 0;
 }
 
@@ -813,7 +1001,15 @@ static int mdp_bl_scale_config(struct msm_fb_data_type *mfd,
 	int curr_bl;
 	down(&mfd->sem);
 	curr_bl = mfd->bl_level;
-	bl_scale = data->scale;
+	// KT Tech :  Fixed Bug - BL Scale
+	if (data->scale > 1024) {
+		pr_info("%s:[BL] Correct Scale, update scale = 1024(%d), min_lvl = %d\n", __func__, data->scale,
+									bl_min_lvl);
+		bl_scale = 1024;
+	}
+	else
+		bl_scale = data->scale;
+
 	bl_min_lvl = data->min_lvl;
 	pr_debug("%s: update scale = %d, min_lvl = %d\n", __func__, bl_scale,
 								bl_min_lvl);
@@ -848,7 +1044,13 @@ void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
 	struct msm_fb_panel_data *pdata;
 	__u32 temp = bkl_lvl;
 	if (!mfd->panel_power_on || !bl_updated) {
-		unset_bl_level = bkl_lvl;
+		// KT Tech : Debug - BL
+		pr_info("%s:[BL] Unset, unset_lvl = %d, blk_lvl = %d, panel_pwr = %d, bl_up = %d\n",
+			__func__,unset_bl_level, bkl_lvl, mfd->panel_power_on, bl_updated);
+
+		if (bkl_lvl)
+			unset_bl_level = bkl_lvl;
+
 		return;
 	} else {
 		unset_bl_level = 0;
@@ -859,6 +1061,8 @@ void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
 	if ((pdata) && (pdata->set_backlight)) {
 		msm_fb_scale_bl(&temp);
 		if (bl_level_old == temp) {
+			// KT Tech :  Debug - BL Scale
+			pr_info("%s:[BL] Skip, old_lvl = %d, blk_lvl = %d\n", __func__, bl_level_old, bkl_lvl);
 			return;
 		}
 		mfd->bl_level = temp;
@@ -1445,10 +1649,23 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 
 	/* cursor memory allocation */
 	if (mfd->cursor_update) {
+		unsigned long cursor_buf_iommu = 0;
 		mfd->cursor_buf = dma_alloc_coherent(NULL,
 					MDP_CURSOR_SIZE,
 					(dma_addr_t *) &mfd->cursor_buf_phys,
 					GFP_KERNEL);
+
+		// KT Tech : Add iommu mapping for mdp cursor buffer address.
+		msm_iommu_map_contig_buffer((unsigned long)mfd->cursor_buf_phys,
+									DISPLAY_READ_DOMAIN,
+									GEN_POOL,
+									MDP_CURSOR_SIZE,
+									SZ_4K,
+									0,
+									&cursor_buf_iommu);
+		if (cursor_buf_iommu)
+				mfd->cursor_buf_phys = (void *)cursor_buf_iommu;
+
 		if (!mfd->cursor_buf)
 			mfd->cursor_update = 0;
 	}
@@ -1697,6 +1914,9 @@ static void bl_workqueue_handler(struct work_struct *work)
 	struct msm_fb_panel_data *pdata = mfd->pdev->dev.platform_data;
 
 	if ((pdata) && (pdata->set_backlight) && (!bl_updated)) {
+		// KT Tech :  Debug - BL Scale
+		pr_info("%s:[BL] Set, old_lvl = %d, unset_lvl = %d\n", __func__, bl_level_old, unset_bl_level);
+
 		down(&mfd->sem);
 		mfd->bl_level = unset_bl_level;
 		pdata->set_backlight(mfd);

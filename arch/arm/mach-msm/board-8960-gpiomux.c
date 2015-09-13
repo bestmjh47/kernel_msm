@@ -18,6 +18,16 @@
 #include "devices.h"
 #include "board-8960.h"
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+
+// I2C configuration for MAXIM17040
+static struct gpiomux_setting gsbi1 = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+#else
 /* The SPI configurations apply to GSBI 1*/
 static struct gpiomux_setting spi_active = {
 	.func = GPIOMUX_FUNC_1,
@@ -30,6 +40,20 @@ static struct gpiomux_setting spi_suspended_config = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
 };
+#endif
+
+#if defined(CONFIG_KTTECH_TDMB_SERVICE)
+static struct gpiomux_setting spi_dmb_active = {
+       .func = GPIOMUX_FUNC_2,
+       .drv = GPIOMUX_DRV_8MA,
+       .pull = GPIOMUX_PULL_NONE,
+};
+static struct gpiomux_setting spi_dmb_suspend = {
+       .func = GPIOMUX_FUNC_GPIO,
+       .drv = GPIOMUX_DRV_2MA,
+       .pull = GPIOMUX_PULL_DOWN,
+};
+#endif
 
 static struct gpiomux_setting spi_active_config2 = {
 	.func = GPIOMUX_FUNC_2,
@@ -337,6 +361,21 @@ static struct msm_gpiomux_config msm8960_fusion_gsbi_configs[] = {
 };
 
 static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	{
+		.gpio      = 8,	/* GSBI1 I2C QUP SDA */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi1,
+		},
+	},
+	{
+		.gpio      = 9,	/* GSBI1 I2C QUP SCL */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi1,
+		},
+	},
+#else
 	{
 		.gpio      = 6,		/* GSBI1 QUP SPI_DATA_MOSI */
 		.settings = {
@@ -365,6 +404,7 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 			[GPIOMUX_ACTIVE] = &spi_active,
 		},
 	},
+#endif
 	{
 		.gpio      = 14,		/* GSBI1 SPI_CS_1 */
 		.settings = {
@@ -410,6 +450,36 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &gsbi10,
 		},
 	},
+	#if defined(CONFIG_KTTECH_TDMB_SERVICE)
+	{
+		.gpio      = 93,                /* GSBI9 QUP SPI_DATA_MOSI */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_dmb_suspend,
+			[GPIOMUX_ACTIVE] = &spi_dmb_active,
+		},
+	},
+	{
+		.gpio      = 94,                /* GSBI9 QUP SPI_DATA_MISO */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_dmb_suspend,
+			[GPIOMUX_ACTIVE] = &spi_dmb_active,
+		},
+	},
+	{
+		.gpio      = 95,                /* GSBI9 QUP SPI_CS_N */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_dmb_suspend,
+			[GPIOMUX_ACTIVE] = &spi_dmb_active,
+		},
+	},
+	{
+		.gpio      = 96,                /* GSBI9 QUP SPI_CLK */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_dmb_suspend,
+			[GPIOMUX_ACTIVE] = &spi_dmb_active,
+		},
+	},
+	#endif
 };
 
 static struct msm_gpiomux_config msm8960_gsbi5_uart_configs[] __initdata = {

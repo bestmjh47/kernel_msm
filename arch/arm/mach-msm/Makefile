@@ -340,6 +340,9 @@ obj-$(CONFIG_MSM_IOMMU)		+= devices-iommu.o iommu_domains.o
 ifdef CONFIG_VCM
 obj-$(CONFIG_ARCH_MSM8X60) += board-msm8x60-vcm.o
 endif
+
+obj-$(CONFIG_KTTECH_MOTOR_MDH1_VIBETONZ) += tspdrv.o
+
 obj-$(CONFIG_MSM_OCMEM) += ocmem.o ocmem_allocator.o ocmem_notifier.o
 obj-$(CONFIG_MSM_OCMEM) += ocmem_sched.o ocmem_api.o
 

@@ -14,7 +14,98 @@
 #include "msm.h"
 #include "msm_ispif.h"
 #include "msm_camera_i2c_mux.h"
+#ifdef CONFIG_MACH_KTTECH
+#include <linux/string.h>
+#include <linux/regulator/consumer.h>
+#include <linux/board_kttech.h>
+#endif
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+#define S5K4E5_EEP_PAGE_SIZE				256		// GT24C16
+#define S5K4E5_EEP_CAL_DATA_SIZE		S5K4E5_EEP_PAGE_SIZE * 5
+static char eeprom_data[S5K4E5_EEP_CAL_DATA_SIZE];
+
+static struct i2c_client *s5k4e5_eeprom_client;
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
+/*=============================================================*/
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+static int s5k4e5_i2c_rxburst(unsigned short saddr, unsigned char *rxdata,	int length)
+{
+	unsigned char tmp_buf = 0;
+
+	struct i2c_msg msgs[] = {
+		{
+			.addr  = saddr,
+			.flags = 0,
+			.len   = 1,
+			.buf   = &tmp_buf,
+		},
+		{
+			.addr  = saddr,
+			.flags = I2C_M_RD,
+			.len   = length,
+			.buf   = rxdata,
+		},
+	};
+	
+	if (i2c_transfer(s5k4e5_eeprom_client->adapter, msgs, 2) < 0) {
+		printk("s5k4e5_i2c_rxdata faild 0x%x\n", saddr);
+		return -EIO;
+	}
+
+#if 0 /* eeprom data checking code */
+{
+		int32_t i = 0;
+		for (i = 0; i < S5K4E5_EEP_PAGE_SIZE; i++)
+			CDBG("============= %s: index = %d,	val = 0x%x \n", __func__, i, *(rxdata+i));
+}
+#endif
+
+	return 0;
+}
+
+static void s5k4e5_get_eeprom_data(void)
+{
+	int32_t pageAddr = 0, rc = 0;
+	char buf[S5K4E5_EEP_PAGE_SIZE];
+	unsigned short addr_shifted;
+
+  	memset(buf, 0, sizeof(buf));
+	memset(eeprom_data, 0, S5K4E5_EEP_CAL_DATA_SIZE);
+  
+  	CDBG("%s: \n", __func__);
+
+	addr_shifted = s5k4e5_eeprom_client->addr >> 1;
+  
+	while (pageAddr < 5)
+	{
+		rc = s5k4e5_i2c_rxburst(addr_shifted | pageAddr, buf, S5K4E5_EEP_PAGE_SIZE);
+		if (rc < 0) {
+			printk("s5k4e5_i2c_read 0x%x failed!\n", s5k4e5_eeprom_client->addr);
+			return;
+		}
+
+		memcpy(eeprom_data + pageAddr * S5K4E5_EEP_PAGE_SIZE, buf, S5K4E5_EEP_PAGE_SIZE);
+		pageAddr++;
+	}
+
+#if 0	/* eeprom data checking code */
+{
+		int32_t i = 0;
+		for (i = 0; i < pageAddr * S5K4E5_EEP_PAGE_SIZE; i++)
+			CDBG("%s: eeprom_data : index = %d,	val = 0x%x ", __func__, i, *(eeprom_data+i));
+}
+#endif
+
+}
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 /*=============================================================*/
 int32_t msm_sensor_adjust_frame_lines(struct msm_sensor_ctrl_t *s_ctrl,
 	uint16_t res)
@@ -314,6 +405,12 @@ int32_t msm_sensor_mode_init(struct msm_sensor_ctrl_t *s_ctrl,
 			int mode, struct sensor_init_cfg *init_info)
 {
 	int32_t rc = 0;
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+	struct msm_camera_sensor_info *data = s_ctrl->sensordata;
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 	s_ctrl->fps_divider = Q10;
 	s_ctrl->cam_mode = MSM_SENSOR_MODE_INVALID;
 
@@ -330,6 +427,16 @@ int32_t msm_sensor_mode_init(struct msm_sensor_ctrl_t *s_ctrl,
 			rc = s_ctrl->func_tbl->sensor_setting(s_ctrl,
 				MSM_SENSOR_REG_INIT, 0);
 	}
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+	if (strcmp(data->sensor_name, "s5k4e5") == 0) {
+		s5k4e5_get_eeprom_data();
+	}
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
 	return rc;
 }
 
@@ -390,6 +497,60 @@ long msm_sensor_subdev_ioctl(struct v4l2_subdev *sd,
 int32_t msm_sensor_get_csi_params(struct msm_sensor_ctrl_t *s_ctrl,
 		struct csi_lane_params_t *sensor_output_info)
 {
+  //printk("kuzuri__ msm.sensor.get.csi_params():: enter....\n");
+  if ( sensor_output_info==NULL )
+  {
+      printk("kuzuri__ output_info is NULL....error..\n");
+      return 0;
+  }
+  if ( s_ctrl==NULL )
+  {
+    printk("kuzuri__ s_ctrl is NULL....error..\n");
+    return 0;
+  }
+  //printk("s_ctrl.i2c_addr= %X , s_ctrl.sensordata->sensor_name = %s \n", s_ctrl->sensor_i2c_addr, s_ctrl->sensordata->sensor_name );
+
+  if ( s_ctrl->sensordata==NULL )
+  {
+    printk("kuzuri__ s_ctrl.sensordata is NULL....error..\n");
+    return 0;
+  }
+  if ( s_ctrl->sensordata->sensor_platform_info==NULL )
+  {
+    printk("kuzuri__ s_ctrl.sensordata.sensor_platform_info is NULL....error..\n");
+    return 0;
+  }
+  if ( s_ctrl->sensordata->sensor_platform_info->csi_lane_params==NULL )
+  {
+    printk("kuzuri__ s_ctrl.sensordata.sensor_platform_info.csi_lane_params is NULL....error..\n");
+    return 0;
+  }
+  if (0 ) // s_ctrl->sensordata->sensor_platform_info->csi_lane_params->csi_lane_assign==NULL )
+  {
+    printk("kuzuri__ s_ctrl.sensordata.sensor_platform_info.csi_lane_params.csi_lane_assign = %X\n", s_ctrl->sensordata->sensor_platform_info->csi_lane_params->csi_lane_assign);
+    //return 0;
+  }
+  if ( 0 ) //s_ctrl->sensordata->sensor_platform_info->csi_lane_params->csi_lane_mask==NULL )
+  {
+    printk("kuzuri__ s_ctrl.sensordata.sensor_platform_info.csi_lane_params.csi_lane_mask= %X\n", s_ctrl->sensordata->sensor_platform_info->csi_lane_params->csi_lane_mask);
+    //return 0;
+  }
+   if ( 0 ) //s_ctrl->sensordata->csi_if==NULL )
+  {
+    printk("kuzuri__ s_ctrl.sensordata.csi_if = %X\n", s_ctrl->sensordata->csi_if);
+    //return 0;
+  }
+  if ( 0 ) //s_ctrl->sensordata->pdata[0].csid_core==NULL )
+  {
+    printk("kuzuri__ s_ctrl.sensordata.pdata[0].csid_core= %X\n", s_ctrl->sensordata->pdata[0].csid_core);
+    //return 0;
+  }
+  if ( 0 ) //s_ctrl->csid_version==NULL )
+  {
+    printk("kuzuri__ s_ctrl.csid_version= %X\n", s_ctrl->csid_version);
+    //return 0;
+  }
+  
 	sensor_output_info->csi_lane_assign = s_ctrl->sensordata->
 		sensor_platform_info->csi_lane_params->csi_lane_assign;
 	sensor_output_info->csi_lane_mask = s_ctrl->sensordata->
@@ -502,6 +663,62 @@ int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 				rc = -EFAULT;
 			break;
 
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+		case CFG_GET_CAL_DATA:
+	  		CDBG("%s:  case CFG_GET_CAL_DATA:     cal_data_idx = %d\n", __func__, cdata.cfg.eeprom_value.cal_data_idx);
+	  		if (cdata.cfg.eeprom_value.cal_data_idx > 1)
+				rc = -EFAULT;
+			else {
+				memcpy(cdata.cfg.eeprom_value.cal_v, eeprom_data + (cdata.cfg.eeprom_value.cal_data_idx	* MAX_CAL_DATA_PACKET_LEN), MAX_CAL_DATA_PACKET_LEN);
+				if (copy_to_user((void *)argp,
+					&cdata,
+					sizeof(struct sensor_cfg_data)))
+					rc = -EFAULT;
+			}
+			break;
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_WB */
+#if 1
+		case CFG_SET_WB:
+			CDBG("%s:  case CFG_SET_WB: cdata.cfg.wb_val:%d\n", __func__, cdata.cfg.wb_val);
+			if (s_ctrl->func_tbl->
+			sensor_set_wb == NULL) {
+				rc = -EFAULT;
+				break;
+			}
+			rc = s_ctrl->func_tbl->
+				sensor_set_wb(
+				s_ctrl,
+				cdata.cfg.wb_val);	
+			break;
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_BRIGHTNESS */
+#if 1
+		case CFG_SET_BRIGHTNESS:
+			printk("%s:  case CFG_SET_BRIGHTNESS: cdata.cfg.brightness:%d\n", __func__, cdata.cfg.brightness);
+			if (s_ctrl->func_tbl->
+			sensor_set_brightness == NULL) {
+			  printk(" CFG_SET_BRIGHTNESS:--- func_tbl is NULL ...\n");
+				rc = -EFAULT;
+				break;
+			}
+			rc = s_ctrl->func_tbl->
+				sensor_set_brightness(
+				s_ctrl,
+				cdata.cfg.brightness);
+			break;
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
 		case CFG_START_STREAM:
 			if (s_ctrl->func_tbl->sensor_start_stream == NULL) {
 				rc = -EFAULT;
@@ -567,11 +784,327 @@ int32_t msm_sensor_disable_i2c_mux(struct msm_camera_i2c_conf *i2c_conf)
 	return 0;
 }
 
+
+#ifdef CONFIG_KTTECH_CAMERA
+static struct regulator *vreg_S8_2P2 = NULL;
+static struct regulator *vreg_LVS5_1P8 = NULL;
+static struct regulator *vreg_L11_2P85 = NULL;
+static struct regulator *vreg_L8_3P0 = NULL;	// S5K4E5 AF
+
+static int camera_power=0;
+
+int cam_get_power(void)
+{
+	printk("[HJM] %s, Start\n", __func__);
+	return camera_power;
+}
+
+EXPORT_SYMBOL(cam_get_power);
+
+
+static int cam_setup_power(int cam_type)
+{
+	int rc = 0;
+	const char *str_S8_2P2 = "8921_s8";
+	const char *str_LVS5_1P8 = "8921_lvs5";
+	const char *str_L11_2P85 = "8921_l11";	
+	const char *str_L8_3P0 = "8921_l8";		// S5K4E5 AF
+
+	//return rc;
+
+	printk("%s: cam_type = %d\n", __func__, cam_type);
+	/* Back camera power up sequence  : vreg_S8_2P2/CAM_5M_EN(DVDD) -> VREG_L11_2P85 -> VREG_LVS5_1P8 -> VREG_L8_3P0(AF_2.8V) */
+	/* Front camera power up sequence : VREG_LVS5_1P8 -> VREG_L11_2P85 */
+
+	msleep(1);
+	
+	/* power on LDO for CAM_DVDD_1.8V */
+	if (cam_type == BACK_CAMERA_2D) {
+		printk("%s: if (cam_type == BACK_CAMERA_2D)\n", __func__);
+		vreg_S8_2P2 = regulator_get(NULL, str_S8_2P2);
+		if (IS_ERR(vreg_S8_2P2)) {
+			rc = PTR_ERR(vreg_S8_2P2);
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_S8_2P2, rc);
+		}
+
+		if (!rc)
+			//rc = regulator_set_voltage(vreg_S8_2P2, 2100000, 2100000);	//rollback 2200000 -> 2100000 because it could affect cpu clock
+			/* Since Qualcomm 1049 patch, min_uV and max_uV of S8 were changed from 2100000 -> 2050000.
+			   So, I change S8 for camera from 2100000 -> 2050000 because it could affect cpu clock.
+			   refer to \kernel\arch\arm\mach-msm\acpuclock-8960.c and \kernel\arch\arm\mach-msm\board-8960-regulator.c */
+			rc = regulator_set_voltage(vreg_S8_2P2, 2050000, 2050000);
+		else {
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_S8_2P2, rc);
+			goto fail_0;
+		}
+
+		msleep(1);
+
+		if (!rc)
+			rc = regulator_enable(vreg_S8_2P2);
+		else {
+			printk("%s: regulator_set_voltage failed %s = %d\n", __func__, str_S8_2P2, rc);
+			goto fail_0;
+		}
+
+		rc = gpio_request(CAM_5M_EN, "cam_5m_en");
+		if (rc) {
+			printk("%s: gpio_request failed on CAM_5M_EN:58, rc=%d\n", __func__,  rc);
+			goto fail_1;
+		}
+	
+		rc = gpio_tlmm_config(GPIO_CFG(CAM_5M_EN, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA), GPIO_CFG_ENABLE);
+		if (rc) {
+			printk("%s: gpio_tlmm_config failed on CAM_5M_EN:58, rc=%d\n", __func__, rc);
+			goto fail_1;
+		}
+
+		rc = gpio_direction_output(CAM_5M_EN, 1);
+		if (rc) {
+			printk("%s: gpio_direction_output failed on CAM_5M_EN:58, rc=%d\n", __func__, rc);
+			goto fail_1;
+		}
+	}
+
+	msleep(1);
+
+	if (cam_type == BACK_CAMERA_2D) {
+		/* Back camera power up sequence : VREG_L11_2P85 -> VREG_LVS5_1P8 */
+		
+		/* VREG_L11_2P85 */
+		vreg_L11_2P85 = regulator_get(NULL, str_L11_2P85);
+		if (IS_ERR(vreg_L11_2P85)) {
+			rc = PTR_ERR(vreg_L11_2P85);
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_L11_2P85, rc);
+		}
+
+		if (!rc)
+			rc = regulator_set_voltage(vreg_L11_2P85, 2800000, 2800000);	/* change voltage of L11  : 2.85V -> 2.8V */
+		else {
+			printk("%s: regulator_get failed %s = %d\n", __func__,	str_L11_2P85, rc);
+			goto fail_2;
+		}
+
+		if (!rc)
+			rc = regulator_enable(vreg_L11_2P85);
+		else {
+			printk("%s: regulator_set_voltage failed %s = %d\n", __func__, str_L11_2P85, rc);
+			goto fail_2;
+		}
+
+		msleep(1);
+		
+		/* VREG_LVS5_1P8 */
+		vreg_LVS5_1P8 = regulator_get(NULL, str_LVS5_1P8);
+		if (IS_ERR(vreg_LVS5_1P8)) {
+			rc = PTR_ERR(vreg_LVS5_1P8);
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_LVS5_1P8, rc);
+		}
+
+		if (!rc) {
+			rc = regulator_enable(vreg_LVS5_1P8);
+		} else {
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_LVS5_1P8, rc);
+			goto fail_3;
+		}
+	} else {	/* cam_type == FRONT_CAMERA_2D */
+		/* Front camera power up sequence : VREG_L11_2P85 -> VREG_LVS5_1P8 */
+		
+		/* VREG_LVS5_1P8 */
+		vreg_LVS5_1P8 = regulator_get(NULL, str_LVS5_1P8);
+		if (IS_ERR(vreg_LVS5_1P8)) {
+			rc = PTR_ERR(vreg_LVS5_1P8);
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_LVS5_1P8, rc);
+		}
+
+		if (!rc) {
+			rc = regulator_enable(vreg_LVS5_1P8);
+		}
+		else {
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_LVS5_1P8, rc);
+			goto fail_2;
+		}
+
+		msleep(1);
+
+		/* VREG_L11_2P85 */
+		vreg_L11_2P85 = regulator_get(NULL, str_L11_2P85);
+		if (IS_ERR(vreg_L11_2P85)) {
+			rc = PTR_ERR(vreg_L11_2P85);
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_L11_2P85, rc);
+		}
+
+		if (!rc)
+			rc = regulator_set_voltage(vreg_L11_2P85, 2800000, 2800000);	/* change voltage of L11  : 2.85V -> 2.8V */
+		else {
+			printk("%s: regulator_get failed %s = %d\n", __func__,	str_L11_2P85, rc);
+			goto fail_3;
+		}
+
+		if (!rc)
+			rc = regulator_enable(vreg_L11_2P85);
+		else {
+			printk("%s: regulator_set_voltage failed %s = %d\n", __func__, str_L11_2P85, rc);
+			goto fail_3;
+		}
+	}
+	
+
+	/* VREG_L8_3P0 : AF_2.8V */
+	if (cam_type == BACK_CAMERA_2D) {
+		printk("%s: if (cam_type == BACK_CAMERA_2D)\n", __func__);
+		msleep(1);
+		vreg_L8_3P0 = regulator_get(NULL, str_L8_3P0);
+		if (IS_ERR(vreg_L8_3P0)) {
+			rc = PTR_ERR(vreg_L8_3P0);
+			printk("%s: regulator_get failed %s = %d\n", __func__, str_L8_3P0, rc);
+		}
+
+		if (!rc)
+			rc = regulator_set_voltage(vreg_L8_3P0, 3000000, 3000000);
+		else {
+			printk("%s: regulator_get failed %s = %d\n", __func__,	str_L8_3P0, rc);
+			goto fail_4;
+		}
+
+		if (!rc)
+			rc = regulator_enable(vreg_L8_3P0);
+		else {
+			printk("%s: regulator_set_voltage failed %s = %d\n", __func__, str_L8_3P0, rc);
+			goto fail_4;
+		}
+	}
+
+    camera_power =1;
+	printk("%s: Camera power set-up completed\n", __func__);
+	return rc;
+
+fail_4:
+	if (cam_type == BACK_CAMERA_2D) {
+		regulator_disable(vreg_LVS5_1P8);
+		regulator_put(vreg_L8_3P0);
+	}
+
+fail_3:
+	if (cam_type == BACK_CAMERA_2D) {
+		regulator_disable(vreg_L11_2P85);
+		regulator_put(vreg_LVS5_1P8);
+		vreg_LVS5_1P8 = NULL;
+	} else {	/* cam_type == FRONT_CAMERA_2D */
+		regulator_disable(vreg_LVS5_1P8);
+		regulator_put(vreg_L11_2P85);
+		vreg_L11_2P85 = NULL;
+	}
+
+fail_2:
+	if (cam_type == BACK_CAMERA_2D) {
+		regulator_put(vreg_L11_2P85);
+		vreg_L11_2P85 = NULL;
+	} else {	/* cam_type == FRONT_CAMERA_2D */
+		regulator_put(vreg_LVS5_1P8);
+		vreg_LVS5_1P8 = NULL;
+	}
+
+fail_1:
+	regulator_disable(vreg_S8_2P2);
+
+fail_0:
+	regulator_put(vreg_S8_2P2);
+	vreg_S8_2P2 = NULL;	
+
+	printk("%s: Camera power failed \n", __func__);
+	return rc;
+};
+
+static void cam_shutdown_power(int cam_type)
+{
+	int rc = 0;
+	printk("%s, cam_type = %d\n", __func__, cam_type);
+	//return;
+
+	/* Back camera power down sequence  : vreg_L11_2P85 -> vreg_S8_2P2/CAM_5M_EN(DVDD) -> vreg_LVS5_1P8 -> VREG_L8_3P0(AF_2.8V) */
+	/* Front camera power down sequence : vreg_L11_2P85 -> vreg_S8_2P2(DVDD) */
+
+	msleep(1);
+
+	if (cam_type == BACK_CAMERA_2D) {
+		/* Back camera power down sequence : vreg_L11_2P85 -> vreg_S8_2P2/CAM_5M_EN(DVDD) -> vreg_LVS5_1P8 */
+		if (vreg_L11_2P85) {
+			regulator_disable(vreg_L11_2P85);
+			regulator_put(vreg_L11_2P85);
+			vreg_L11_2P85 = NULL;
+		}
+
+		msleep(1);
+
+		/* vreg_S8_2P2/CAM_5M_EN(DVDD) */
+		if (vreg_S8_2P2) {
+			regulator_disable(vreg_S8_2P2);
+			regulator_put(vreg_S8_2P2);
+			vreg_S8_2P2 = NULL;
+		}
+
+		rc = gpio_direction_output(CAM_5M_EN, 0);
+		if (!rc)
+			gpio_free(CAM_5M_EN);
+		else
+			printk("%s: gpio_direction_output failed %d\n", __func__,	 rc);
+
+		msleep(1);
+		
+		if (vreg_LVS5_1P8) {
+			regulator_disable(vreg_LVS5_1P8);
+			regulator_put(vreg_LVS5_1P8);
+			vreg_LVS5_1P8 = NULL;
+		}
+
+		msleep(1);
+		
+		/* VREG_L8_3P0(AF_2.8V) */
+		if (vreg_L8_3P0) {
+			regulator_disable(vreg_L8_3P0);
+			regulator_put(vreg_L8_3P0);
+			vreg_L8_3P0 = NULL;
+		} 
+	} else { /* cam_type == FRONT_CAMERA_2D */
+		/* Front camera power down sequence : vreg_L11_2P85 -> vreg_LVS5_1P8 */
+		if (vreg_L11_2P85) {
+			regulator_disable(vreg_L11_2P85);
+			regulator_put(vreg_L11_2P85);
+			vreg_L11_2P85 = NULL;
+		}
+
+		msleep(1);
+
+		if (vreg_LVS5_1P8) {
+			regulator_disable(vreg_LVS5_1P8);
+			regulator_put(vreg_LVS5_1P8);
+			vreg_LVS5_1P8 = NULL;
+		}
+	}
+
+	msleep(1);
+	
+    camera_power =0;
+	printk("%s: Camera power shut-down completed\n", __func__);
+}
+#endif
+
 int32_t msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
 	struct msm_camera_sensor_info *data = s_ctrl->sensordata;
 	CDBG("%s: %d\n", __func__, __LINE__);
+#ifdef CONFIG_MACH_KTTECH
+	if (strcmp(data->sensor_name, "s5k4e5") == 0) {
+		/* BACK_CAMERA_2D */
+		cam_setup_power(0);
+	} else if (strcmp(data->sensor_name, "mt9m114") == 0) {
+		/* FRONT_CAMERA_2D */
+		cam_setup_power(1);
+	}
+#endif
+
 	s_ctrl->reg_ptr = kzalloc(sizeof(struct regulator *)
 			* data->sensor_platform_info->num_vreg, GFP_KERNEL);
 	if (!s_ctrl->reg_ptr) {
@@ -586,6 +1119,9 @@ int32_t msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 		goto request_gpio_failed;
 	}
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* This code is not used in O7 */
+#if 0 //ndef CONFIG_MACH_KTTECH
 	rc = msm_camera_config_vreg(&s_ctrl->sensor_i2c_client->client->dev,
 			s_ctrl->sensordata->sensor_platform_info->cam_vreg,
 			s_ctrl->sensordata->sensor_platform_info->num_vreg,
@@ -603,6 +1139,8 @@ int32_t msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 		pr_err("%s: enable regulator failed\n", __func__);
 		goto enable_vreg_failed;
 	}
+#endif //#ifndef CONFIG_MACH_KTTECH
+/* End - jaemoon.hwang@kttech.co.kr */
 
 	rc = msm_camera_config_gpio_table(data, 1);
 	if (rc < 0) {
@@ -633,6 +1171,10 @@ int32_t msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 enable_clk_failed:
 		msm_camera_config_gpio_table(data, 0);
 config_gpio_failed:
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* This code is not used in O7 */
+#if 0 //ndef CONFIG_MACH_KTTECH
 	msm_camera_enable_vreg(&s_ctrl->sensor_i2c_client->client->dev,
 			s_ctrl->sensordata->sensor_platform_info->cam_vreg,
 			s_ctrl->sensordata->sensor_platform_info->num_vreg,
@@ -644,6 +1186,8 @@ enable_vreg_failed:
 		s_ctrl->sensordata->sensor_platform_info->num_vreg,
 		s_ctrl->reg_ptr, 0);
 config_vreg_failed:
+#endif	//#ifndef CONFIG_MACH_KTTECH
+/* End - jaemoon.hwang@kttech.co.kr */
 	msm_camera_request_gpio_table(data, 0);
 request_gpio_failed:
 	kfree(s_ctrl->reg_ptr);
@@ -664,6 +1208,10 @@ int32_t msm_sensor_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 	msm_cam_clk_enable(&s_ctrl->sensor_i2c_client->client->dev,
 		cam_clk_info, &s_ctrl->cam_clk, ARRAY_SIZE(cam_clk_info), 0);
 	msm_camera_config_gpio_table(data, 0);
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* This code is not used in O7 */
+#if 0 //ndef CONFIG_MACH_KTTECH
 	msm_camera_enable_vreg(&s_ctrl->sensor_i2c_client->client->dev,
 		s_ctrl->sensordata->sensor_platform_info->cam_vreg,
 		s_ctrl->sensordata->sensor_platform_info->num_vreg,
@@ -672,8 +1220,21 @@ int32_t msm_sensor_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 		s_ctrl->sensordata->sensor_platform_info->cam_vreg,
 		s_ctrl->sensordata->sensor_platform_info->num_vreg,
 		s_ctrl->reg_ptr, 0);
+#endif	//#ifndef CONFIG_MACH_KTTECH
+/* End - jaemoon.hwang@kttech.co.kr */
+
 	msm_camera_request_gpio_table(data, 0);
 	kfree(s_ctrl->reg_ptr);
+
+#ifdef CONFIG_MACH_KTTECH
+	if (strcmp(data->sensor_name, "s5k4e5") == 0) {
+		/* BACK_CAMERA_2D */
+		cam_shutdown_power(0);
+	} else if (strcmp(data->sensor_name, "mt9m114") == 0) {
+		/* FRONT_CAMERA_2D */
+		cam_shutdown_power(1);
+	}
+#endif
 	return 0;
 }
 
@@ -685,13 +1246,15 @@ int32_t msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 			s_ctrl->sensor_i2c_client,
 			s_ctrl->sensor_id_info->sensor_id_reg_addr, &chipid,
 			MSM_CAMERA_I2C_WORD_DATA);
+	printk("[HJM] %s, s_ctrl->sensordata->sensor_name: %s, s_ctrl->sensor_i2c_addr: 0x%x\n", __func__, s_ctrl->sensordata->sensor_name, s_ctrl->sensor_i2c_addr);
 	if (rc < 0) {
 		pr_err("%s: %s: read id failed\n", __func__,
 			s_ctrl->sensordata->sensor_name);
 		return rc;
 	}
 
-	CDBG("msm_sensor id: %d\n", chipid);
+	printk("msm_sensor (%s)  id: %X  / wanna= %X\n", s_ctrl->sensordata->sensor_name, chipid, s_ctrl->sensor_id_info->sensor_id);
+	printk("[HJM] msm_sensor id: %d\n", chipid);
 	if (chipid != s_ctrl->sensor_id_info->sensor_id) {
 		pr_err("msm_sensor_match_id chip id doesnot match\n");
 		return -ENODEV;
@@ -709,7 +1272,7 @@ int32_t msm_sensor_i2c_probe(struct i2c_client *client,
 {
 	int rc = 0;
 	struct msm_sensor_ctrl_t *s_ctrl;
-	CDBG("%s %s_i2c_probe called\n", __func__, client->name);
+	printk("%s %s_i2c_probe called\n", __func__, client->name);
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("%s %s i2c_check_functionality failed\n",
 			__func__, client->name);
@@ -729,6 +1292,17 @@ int32_t msm_sensor_i2c_probe(struct i2c_client *client,
 		rc = -EFAULT;
 		return rc;
 	}
+
+	/* Begin - jaemoon.hwang@kttech.co.kr */
+	/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+	if (strcmp(client->name, "s5k4e5_eeprom") == 0) {
+		s5k4e5_eeprom_client = client;
+		CDBG("%s_i2c_probe succeed return rc:%d;\n", client->name, rc);
+		return rc;
+	}
+#endif
+	/* End - jaemoon.hwang@kttech.co.kr */
 
 	s_ctrl->sensordata = client->dev.platform_data;
 	if (s_ctrl->sensordata == NULL) {
@@ -818,14 +1392,14 @@ int32_t msm_sensor_v4l2_s_ctrl(struct v4l2_subdev *sd,
 	struct msm_sensor_v4l2_ctrl_info_t *v4l2_ctrl =
 		s_ctrl->msm_sensor_v4l2_ctrl_info;
 
-	CDBG("%s\n", __func__);
-	CDBG("%d\n", ctrl->id);
+	printk("%s\n", __func__);
+	printk("%d\n", ctrl->id);
 	if (v4l2_ctrl == NULL)
 		return rc;
 	for (i = 0; i < s_ctrl->num_v4l2_ctrl; i++) {
 		if (v4l2_ctrl[i].ctrl_id == ctrl->id) {
 			if (v4l2_ctrl[i].s_v4l2_ctrl != NULL) {
-				CDBG("\n calling msm_sensor_s_ctrl_by_enum\n");
+				printk("\n calling msm_sensor_s_ctrl_by_enum\n");
 				rc = v4l2_ctrl[i].s_v4l2_ctrl(
 					s_ctrl,
 					&s_ctrl->msm_sensor_v4l2_ctrl_info[i],
@@ -846,7 +1420,7 @@ int32_t msm_sensor_v4l2_query_ctrl(
 		(struct msm_sensor_ctrl_t *) sd->dev_priv;
 
 	CDBG("%s\n", __func__);
-	CDBG("%s id: %d\n", __func__, qctrl->id);
+	printk("%s id: %d\n", __func__, qctrl->id);
 
 	if (s_ctrl->msm_sensor_v4l2_ctrl_info == NULL)
 		return rc;
@@ -921,3 +1495,120 @@ int msm_sensor_enable_debugfs(struct msm_sensor_ctrl_t *s_ctrl)
 
 	return 0;
 }
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_WB */
+#if 1
+int msm_sensor_set_wb(struct msm_sensor_ctrl_t *s_ctrl, int wb)
+{
+	int rc = 0;
+	CDBG("%s enter, wb:%d\n", __func__, wb);
+	
+	switch (wb) {
+
+		case 1: { // CAMERA_WB_AUTO
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC909, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x0300, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		case 5: { // CAMERA_WB_DAYLIGHT
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC909, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x0100, MSM_CAMERA_I2C_WORD_DATA); 			
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0xC8F0, 0x1964, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		case 6: { // CAMERA_WB_CLOUDY_DAYLIGHT
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC909, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x0100, MSM_CAMERA_I2C_WORD_DATA); 			
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0xC8F0, 0x13EC, MSM_CAMERA_I2C_WORD_DATA); 	
+		}
+		break;
+
+		case 4: { // CAMERA_WB_FLUORESCENT
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC909, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x0100, MSM_CAMERA_I2C_WORD_DATA); 			
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0xC8F0, 0x1130, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		case 3: { // CAMERA_WB_INCANDESCENT
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC909, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x0100, MSM_CAMERA_I2C_WORD_DATA); 			
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0xC8F0, 0x0AF0, MSM_CAMERA_I2C_WORD_DATA); 						
+		}
+		break;
+
+	}
+
+	CDBG("%s return rc:%d; exit\n", __func__, rc);
+	return rc;
+}
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* SENSOR_SET_BRIGHTNESS */
+#if 1
+int msm_sensor_set_brightness(struct msm_sensor_ctrl_t *s_ctrl, int brightness)
+{
+	int rc = 0;
+
+	printk("%s enter, brightness:%d\n", __func__, brightness);
+
+	switch (brightness) {
+
+		case 0: { // Brightness -5
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC87A, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x1400, MSM_CAMERA_I2C_WORD_DATA);
+		}
+		break;
+
+		case 1: { // Brightness -3
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC87A, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x2000, MSM_CAMERA_I2C_WORD_DATA); 			
+		}
+		break;
+
+		case 2: { // Brightness -2
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC87A, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x2E00, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		case 3: { // Brightness 0
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC87A, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x3E00, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		case 4: { // Brightness +2
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC87A, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x5200, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		case 5: { // Brightness +3
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC87A, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x6600, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		case 6: { // Brightness +5
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x098E, 0xC87A, MSM_CAMERA_I2C_WORD_DATA); 
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client, 0x0990, 0x8000, MSM_CAMERA_I2C_WORD_DATA); 
+		}
+		break;
+
+		default: {
+		}
+	}
+
+
+	printk("%s return rc:%d; exit\n", __func__, rc);
+	return rc;
+
+}
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */

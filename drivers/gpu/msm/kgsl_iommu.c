@@ -749,6 +749,7 @@ static int kgsl_iommu_start(struct kgsl_mmu *mmu)
 		if (status)
 			return -ENOMEM;
 	}
+
 	/* We use the GPU MMU to control access to IOMMU registers on 8960 with
 	 * a225, hence we still keep the MMU active on 8960 */
 	if (cpu_is_msm8960()) {

@@ -28,30 +28,69 @@
 #include "devices.h"
 #include "board-8960.h"
 
+#ifdef CONFIG_MACH_KTTECH
+#include <linux/io.h>
+#endif
+
+#ifdef CONFIG_MACH_KTTECH
+/***************************************************************************************************
+ IMPORTANT!!!!!!!!
+ If you try to change MSM_RAM_CONSOLE_BASE or MSM_RESTART_MAGIC_ADDR, 
+ you must change MSM_RAM_CONSOLE_BASE and MSM_RESTART_MAGIC_ADDR definition on lk bootloader
+ (\AndroidSrc\bootable\bootloader\lk\platform\msm8960\include\platform\iomap.h)
+***************************************************************************************************/
+#define MSM_RAM_CONSOLE_BASE    (0x88D00000) 
+#define MSM_RAM_CONSOLE_SIZE	(255 * SZ_4K) //256 -> 255
+#define MSM_RESTART_MAGIC_ADDR  (MSM_RAM_CONSOLE_BASE + MSM_RAM_CONSOLE_SIZE)
+#endif
+
+
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+#define MSM_FB_PRIM_BUF_SIZE \
+		(roundup((roundup(1280, 32) * roundup(736, 32) * 4), 4096) * 3)
+			/* 4 bpp x 3 pages */
+#else
 #define MSM_FB_PRIM_BUF_SIZE \
 		(roundup((roundup(1920, 32) * roundup(1200, 32) * 4), 4096) * 3)
 			/* 4 bpp x 3 pages */
+#endif
+#else  /* CONFIG_FB_MSM_TRIPLE_BUFFER */
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+#define MSM_FB_PRIM_BUF_SIZE \
+		(roundup((roundup(1280, 32) * roundup(736, 32) * 4), 4096) * 2)
+			/* 4 bpp x 2 pages */
 #else
 #define MSM_FB_PRIM_BUF_SIZE \
 		(roundup((roundup(1920, 32) * roundup(1200, 32) * 4), 4096) * 2)
 			/* 4 bpp x 2 pages */
 #endif
+#endif /* CONFIG_FB_MSM_TRIPLE_BUFFER */
 
 /* Note: must be multiple of 4096 */
 #define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE, 4096)
 
 #ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+#define MSM_FB_OVERLAY0_WRITEBACK_SIZE \
+		roundup((roundup(1280, 32) * roundup(736, 32) * 3 * 2), 4096)
+#else
 #define MSM_FB_OVERLAY0_WRITEBACK_SIZE \
 		roundup((roundup(1920, 32) * roundup(1200, 32) * 3 * 2), 4096)
-#else
+#endif
+#else   /* CONFIG_FB_MSM_OVERLAY0_WRITEBACK */
 #define MSM_FB_OVERLAY0_WRITEBACK_SIZE (0)
 #endif  /* CONFIG_FB_MSM_OVERLAY0_WRITEBACK */
 
 #ifdef CONFIG_FB_MSM_OVERLAY1_WRITEBACK
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+#define MSM_FB_OVERLAY1_WRITEBACK_SIZE \
+		roundup((roundup(1280, 32) * roundup(736, 32) * 3 * 2), 4096)
+#else
 #define MSM_FB_OVERLAY1_WRITEBACK_SIZE \
 		roundup((roundup(1920, 32) * roundup(1080, 32) * 3 * 2), 4096)
-#else
+#endif
+#else   /* CONFIG_FB_MSM_OVERLAY1_WRITEBACK */
 #define MSM_FB_OVERLAY1_WRITEBACK_SIZE (0)
 #endif  /* CONFIG_FB_MSM_OVERLAY1_WRITEBACK */
 
@@ -67,6 +106,9 @@
 #define MIPI_CMD_RENESAS_FWVGA_PANEL_NAME	"mipi_cmd_renesas_fwvga"
 #define MIPI_VIDEO_ORISE_720P_PANEL_NAME	"mipi_video_orise_720p"
 #define MIPI_CMD_ORISE_720P_PANEL_NAME		"mipi_cmd_orise_720p"
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+#define MIPI_LG_L4500T_HD_PANEL_NAME "mipi_video_lg_l4500t_hd"
+#endif
 #define HDMI_PANEL_NAME	"hdmi_msm"
 #define TVOUT_PANEL_NAME	"tvout_msm"
 
@@ -112,6 +154,16 @@ static int msm_fb_detect_panel(const char *name)
 					PANEL_NAME_MAX_LEN)))
 			return 0;
 
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+		if (!strncmp(name, MIPI_LG_L4500T_HD_PANEL_NAME,
+				strnlen(MIPI_LG_L4500T_HD_PANEL_NAME,
+						PANEL_NAME_MAX_LEN)))
+		{
+		  printk(KERN_DEBUG "### lg panel detect............\n");
+		  return 0;
+		}
+#endif
+
 #if !defined(CONFIG_FB_MSM_LVDS_MIPI_PANEL_DETECT) && \
 	!defined(CONFIG_FB_MSM_MIPI_PANEL_DETECT)
 		if (!strncmp(name, MIPI_VIDEO_NOVATEK_QHD_PANEL_NAME,
@@ -153,6 +205,7 @@ static int msm_fb_detect_panel(const char *name)
 #endif
 	}
 
+#ifndef CONFIG_MACH_KTTECH
 	if (!strncmp(name, HDMI_PANEL_NAME,
 			strnlen(HDMI_PANEL_NAME,
 				PANEL_NAME_MAX_LEN))) {
@@ -165,6 +218,7 @@ static int msm_fb_detect_panel(const char *name)
 			strnlen(TVOUT_PANEL_NAME,
 				PANEL_NAME_MAX_LEN)))
 		return 0;
+#endif
 
 	pr_warning("%s: not supported '%s'", __func__, name);
 	return -ENODEV;
@@ -346,6 +400,253 @@ static int mipi_dsi_liquid_panel_power(int on)
 	return 0;
 }
 
+#if defined( CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD )
+
+static int mipi_dsi_cdp_panel_power(int on)
+{
+#if 0//!defined(CONFIG_MACH_KTTECH)
+	static struct regulator *reg_l8, *reg_l23, *reg_l2;
+#else
+	static struct regulator *reg_l23, *reg_l2;
+#endif
+	static struct regulator *reg_l16 ;//, *reg_l17;
+
+	int rc;
+
+	pr_debug("%s: state : %d\n", __func__, on);
+
+	if (!dsi_power_on) {
+
+#if 0//!defined(CONFIG_MACH_KTTECH)
+		reg_l8 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_vdc");
+		if (IS_ERR(reg_l8)) {
+			pr_err("could not get 8921_l8, rc = %ld\n",
+				PTR_ERR(reg_l8));
+			return -ENODEV;
+		}
+#endif
+
+		reg_l23 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_vddio");
+		if (IS_ERR(reg_l23)) {
+			pr_err("000 could not get 8921_l23, rc = %ld\n",
+				PTR_ERR(reg_l23));
+			return -ENODEV;
+		}
+
+		reg_l2 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_vdda");
+		if (IS_ERR(reg_l2)) {
+			pr_err("could not get 8921_l2, rc = %ld\n",
+				PTR_ERR(reg_l2));
+			return -ENODEV;
+		}
+
+
+//
+/*
+		reg_l17 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"OLED_VDD3_2.2V");
+		if (IS_ERR(reg_l17)) {
+			pr_err("could not get 8921_l17, rc = %ld\n",
+				PTR_ERR(reg_l17));
+			return -ENODEV;
+		}
+*/
+//		reg_l16 = regulator_get(&msm_mipi_dsi1_device.dev,
+//				"VCI_VCC_3.0");
+
+		reg_l16 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"8921_l16");
+				
+		if (IS_ERR(reg_l16)) {
+			pr_err("could not get 8921_l16, rc = %ld\n",
+				PTR_ERR(reg_l16));
+			return -ENODEV;
+		}
+//		
+
+#if 0//!defined(CONFIG_MACH_KTTECH)
+		rc = regulator_set_voltage(reg_l8, 2800000, 3000000);
+		if (rc) {
+			pr_err("set_voltage l8 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+#endif
+		rc = regulator_set_voltage(reg_l23, 1800000, 1800000);
+		if (rc) {
+			pr_err("set_voltage l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+	
+		rc = regulator_set_voltage(reg_l2, 1200000, 1200000);
+		if (rc) {
+			pr_err("set_voltage l2 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+//
+/*
+		rc = regulator_set_voltage(reg_l17, 2200000, 2200000);
+		if (rc) {
+			pr_err("set_voltage l16 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+*/
+//		rc = regulator_set_voltage(reg_l16, 3000000, 3000000);
+		rc = regulator_set_voltage(reg_l16, 2800000, 2800000);
+	
+		if (rc) {
+			pr_err("set_voltage l16 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+//
+		
+		dsi_power_on = true;
+	}
+	if (on) {
+#if 0//!defined(CONFIG_MACH_KTTECH)
+		rc = regulator_set_optimum_mode(reg_l8, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l8 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+#endif
+		rc = regulator_set_optimum_mode(reg_l23, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+		rc = regulator_set_optimum_mode(reg_l2, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+//
+		rc = regulator_set_optimum_mode(reg_l16, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l16 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+/*
+		rc = regulator_set_optimum_mode(reg_l17, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l17 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+*/		
+//		
+		
+#if 0//!defined(CONFIG_MACH_KTTECH)		
+		rc = regulator_enable(reg_l8);
+		if (rc) {
+			pr_err("enable l8 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+#endif
+		rc = regulator_enable(reg_l23);
+		if (rc) {
+			pr_err("enable l8 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+		rc = regulator_enable(reg_l2);
+		if (rc) {
+			pr_err("enable l2 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+//
+		rc = regulator_enable(reg_l16);
+		if (rc) {
+			pr_err("enable l16 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+/*
+		rc = regulator_enable(reg_l17);
+		if (rc) {
+			pr_err("enable l17 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+*/		
+
+//
+
+  	} else {
+
+//
+		rc = regulator_disable(reg_l16);
+		if (rc) {
+			pr_err("disable reg_l23 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+/*		
+		rc = regulator_disable(reg_l17);
+		if (rc) {
+			pr_err("disable reg_l23 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+*/		
+//		  	
+		rc = regulator_disable(reg_l2);
+		if (rc) {
+			pr_err("disable reg_l2 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+#if 0//!defined(CONFIG_MACH_KTTECH)
+		rc = regulator_disable(reg_l8);
+		if (rc) {
+			pr_err("disable reg_l8 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+#endif
+		rc = regulator_disable(reg_l23);
+		if (rc) {
+			pr_err("disable reg_l23 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+
+//
+		rc = regulator_set_optimum_mode(reg_l16, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l16 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+/*		
+		rc = regulator_set_optimum_mode(reg_l17, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l17 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+*/
+//
+		
+#if 0//!defined(CONFIG_MACH_KTTECH)		
+		rc = regulator_set_optimum_mode(reg_l8, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l8 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+#endif
+		rc = regulator_set_optimum_mode(reg_l23, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+		rc = regulator_set_optimum_mode(reg_l2, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+	}
+	return 0;
+}
+
+#else
 static int mipi_dsi_cdp_panel_power(int on)
 {
 	static struct regulator *reg_l8, *reg_l23, *reg_l2;
@@ -467,6 +768,7 @@ static int mipi_dsi_cdp_panel_power(int on)
 	}
 	return 0;
 }
+#endif
 
 static char mipi_dsi_splash_is_enabled(void);
 static int mipi_dsi_panel_power(int on)
@@ -483,9 +785,73 @@ static int mipi_dsi_panel_power(int on)
 	return ret;
 }
 
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+//static int dsi_l4500t_on = 0;
+static int mipi_dsi_lg_l4500t_dsi_power( int on )
+{
+// Moved to msm_dsi.c(mipi_dsi_on,mipi_dsi_off) file.
+#if 0
+	int rc = 0;
+	static int mipi_dsi_power_save_on;
+	static int gpio_disp_rst;
+	
+	pr_info("%s: on= %d \n", __func__, on );
+
+	if (mipi_dsi_power_save_on == on) {
+			printk(KERN_ERR "%s: Already Power Saved DSI.\n", __func__);	
+			return 0;
+	}
+
+	mipi_dsi_power_save_on = on;	
+
+	if( dsi_l4500t_on == 0 )
+	{
+		gpio_disp_rst = LCD_RESET_GPIO;
+
+		rc = gpio_request(gpio_disp_rst, "disp_rst_n");
+		if (rc) {
+			pr_err("request gpio_disp_rst failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+
+		dsi_l4500t_on = true;
+	}	
+
+	if ( on ) {
+  		mipi_dsi_panel_power( on );
+
+      /* LCD Reset Sequence */
+  		gpio_set_value_cansleep(gpio_disp_rst, 1); 
+  		msleep(5);
+  		gpio_set_value_cansleep(gpio_disp_rst, 0); 
+  		msleep(10);
+  		gpio_set_value_cansleep(gpio_disp_rst, 1); 
+  		msleep(10);      
+	} 
+	else 
+	{
+		gpio_set_value_cansleep(gpio_disp_rst, 0);
+		msleep(120);
+
+		mipi_dsi_panel_power( on );
+	}
+
+#else
+	mipi_dsi_panel_power( on );
+#endif
+	return 0;
+}
+#endif
+
 static struct mipi_dsi_platform_data mipi_dsi_pdata = {
 	.vsync_gpio = MDP_VSYNC_GPIO,
+#ifdef CONFIG_KTTECH_MIPI_SHARP_VIDEO_WXGA
+	.dsi_power_save = mipi_dsi_sharp_qhd_power,
+#elif defined( CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD )
+	.dsi_power_save = mipi_dsi_lg_l4500t_dsi_power,
+#else		
 	.dsi_power_save = mipi_dsi_panel_power,
+#endif	
 	.splash_is_enabled = mipi_dsi_splash_is_enabled,
 };
 
@@ -616,6 +982,19 @@ static struct platform_device mipi_dsi_simulator_panel_device = {
 	.id = 0,
 };
 
+#ifdef CONFIG_KTTECH_MIPI_SHARP_VIDEO_WXGA /* 4.5' Sharp */
+static struct platform_device mipi_dsi_sharp_panel_device = {
+	.name = "mipi_sharp",
+	.id = 0,
+};
+#elif defined( CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD )
+static struct platform_device mipi_dsi_lg_l4500t_panel_device = {
+	.name = "mipi_lg_l4500t",
+	.id = 0,
+};
+#endif
+
+#if 0//!defined(CONFIG_MACH_KTTECH)
 #define LPM_CHANNEL0 0
 static int toshiba_gpio[] = {LPM_CHANNEL0};
 
@@ -631,6 +1010,7 @@ static struct platform_device mipi_dsi_toshiba_panel_device = {
 		.platform_data = &toshiba_pdata,
 	}
 };
+#endif
 
 #define FPGA_3D_GPIO_CONFIG_ADDR	0xB5
 static int dsi2lvds_gpio[4] = {
@@ -743,7 +1123,7 @@ static struct platform_device wfd_device = {
 };
 #endif
 
-#ifdef CONFIG_MSM_BUS_SCALING
+#if defined(CONFIG_MSM_BUS_SCALING) && defined(CONFIG_FB_MSM_DTV)
 static struct msm_bus_vectors dtv_bus_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
@@ -1021,7 +1401,13 @@ void __init msm8960_init_fb(void)
 	if (machine_is_msm8960_liquid())
 		platform_device_register(&mipi_dsi2lvds_bridge_device);
 	else
+#ifdef CONFIG_KTTECH_MIPI_SHARP_VIDEO_WXGA
+		platform_device_register(&mipi_dsi_sharp_panel_device);
+#elif defined(CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD)
+		platform_device_register(&mipi_dsi_lg_l4500t_panel_device);
+#else
 		platform_device_register(&mipi_dsi_toshiba_panel_device);
+#endif  
 
 	if (machine_is_msm8x60_rumi3()) {
 		msm_fb_register_device("mdp", NULL);
@@ -1029,10 +1415,36 @@ void __init msm8960_init_fb(void)
 	} else
 		msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("mipi_dsi", &mipi_dsi_pdata);
-#ifdef CONFIG_MSM_BUS_SCALING
+#if defined(CONFIG_MSM_BUS_SCALING) && defined(CONFIG_FB_MSM_DTV)
 	msm_fb_register_device("dtv", &dtv_pdata);
 #endif
 }
+
+#ifdef CONFIG_MACH_KTTECH
+static struct resource ram_console_resources[] = {
+	{
+		.flags	= IORESOURCE_MEM,	},
+};
+
+struct platform_device ram_console_device = {
+	.name		= "ram_console",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(ram_console_resources),
+	.resource	= ram_console_resources,
+};
+
+/* MSM_RESTART_MAGIC_ADDR */
+void msm_write_restart_reason(u32 restart_code)
+{
+	void *restart_reason;
+	printk(KERN_CRIT "%s: start resatrt_code = 0x%x \n", __func__, restart_code);
+	restart_reason = ioremap_nocache(MSM_RESTART_MAGIC_ADDR, SZ_4K);
+	writel(restart_code, restart_reason);
+	dsb(); // Cache Flush Before io unmap
+	iounmap(restart_reason);
+	printk(KERN_CRIT "%s: end \n", __func__);
+}
+#endif
 
 void __init msm8960_allocate_fb_region(void)
 {
@@ -1045,6 +1457,11 @@ void __init msm8960_allocate_fb_region(void)
 	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 			size, addr, __pa(addr));
+#ifdef CONFIG_MACH_KTTECH
+	ram_console_resources[0].start = MSM_RAM_CONSOLE_BASE;
+	ram_console_resources[0].end = ram_console_resources[0].start + MSM_RAM_CONSOLE_SIZE-1;
+#endif
+
 }
 
 /**
@@ -1063,8 +1480,10 @@ static void set_mdp_clocks_for_wuxga(void)
 	mdp_1080p_vectors[0].ib = 2000000000;
 
 	if (hdmi_is_primary) {
+#ifdef CONFIG_FB_MSM_DTV
 		dtv_bus_def_vectors[0].ab = 2000000000;
 		dtv_bus_def_vectors[0].ib = 2000000000;
+#endif
 	}
 }
 

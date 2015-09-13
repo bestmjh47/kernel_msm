@@ -31,6 +31,10 @@
 #include <mach/msm_xo.h>
 #include <mach/msm_hsusb.h>
 
+#ifdef CONFIG_MACH_KTTECH
+#include <mach/board.h>
+#endif
+
 #define CHG_BUCK_CLOCK_CTRL	0x14
 
 #define PBL_ACCESS1		0x04
@@ -273,6 +277,10 @@ struct pm8921_chg_chip {
 	bool				has_dc_supply;
 	u8				active_path;
 	int				recent_reported_soc;
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	struct delayed_work 	max17040_work;
+#endif
+
 };
 
 /* user space parameter to limit usb current */
@@ -289,6 +297,27 @@ static int thermal_mitigation;
 static struct pm8921_chg_chip *the_chip;
 
 static struct pm8xxx_adc_arb_btm_param btm_config;
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+extern int max17040_get_voltage(void);
+extern int max17040_get_soc(int batt_temp);
+extern int max17040_batt_insert_irq_handler(int batt_present);
+
+static int test_batt_temp;
+static int latest_batt_real_temp=200;
+static int param_set_battery_voltage(const char *val, struct kernel_param *kp)
+{
+	int ret;
+	ret = param_set_int(val, kp);
+	if (ret) {
+		pr_err("error setting value %d\n", ret);
+		return ret;
+	}	
+	return 0;
+}
+module_param_call(test_batt_temp, param_set_battery_voltage, param_get_int, &test_batt_temp, 0644);
+static int get_prop_batt_present(struct pm8921_chg_chip *chip);
+#endif
 
 static int pm_chg_masked_write(struct pm8921_chg_chip *chip, u16 addr,
 							u8 mask, u8 val)
@@ -1072,6 +1101,10 @@ static void battery_id_valid(struct work_struct *work)
 	struct pm8921_chg_chip *chip = container_of(work,
 				struct pm8921_chg_chip, battery_id_valid_work);
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	max17040_batt_insert_irq_handler(get_prop_batt_present(chip));
+#endif
+
 	check_battery_valid(chip);
 }
 
@@ -1360,8 +1393,23 @@ static enum power_supply_property msm_batt_power_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_ENERGY_FULL,
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+#endif
+
 };
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+static int get_prop_battery_uvolts(struct pm8921_chg_chip *chip)
+{
+	int uVolts;
+	
+	uVolts = max17040_get_voltage()*1000;
+	pr_debug(":::: max17040_based mVolts= %d\n",uVolts/1000);
+	return uVolts;
+
+}
+#else
 static int get_prop_battery_uvolts(struct pm8921_chg_chip *chip)
 {
 	int rc;
@@ -1393,12 +1441,30 @@ static unsigned int voltage_based_capacity(struct pm8921_chg_chip *chip)
 		return (current_voltage_mv - low_voltage) * 100
 		    / (high_voltage - low_voltage);
 }
+#endif
 
 static int get_prop_batt_present(struct pm8921_chg_chip *chip)
 {
 	return pm_chg_get_rt_status(chip, BATT_INSERTED_IRQ);
 }
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
+{
+	int percent_soc = 0;
+
+	if(test_batt_temp != 0){
+		percent_soc = max17040_get_soc(test_batt_temp);
+	}else{
+		percent_soc = max17040_get_soc(latest_batt_real_temp);
+	}
+	
+	//pr_info("::::  max17040_based SOC =  %d , real batt temp=%d, test batt temp=%d \n", 
+		//percent_soc, latest_batt_real_temp, test_batt_temp);
+	return percent_soc;
+	
+}
+#else
 static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 {
 	int percent_soc;
@@ -1417,6 +1483,7 @@ static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 	chip->recent_reported_soc = percent_soc;
 	return percent_soc;
 }
+#endif
 
 static int get_prop_batt_current(struct pm8921_chg_chip *chip)
 {
@@ -1518,17 +1585,29 @@ static int get_prop_batt_temp(struct pm8921_chg_chip *chip)
 	int rc;
 	struct pm8xxx_adc_chan_result result;
 
+#ifdef CONFIG_MACH_KTTECH
+	if ( get_kttech_ftm_mode() != KTTECH_FTM_MODE_NONE ){
+		// if phone is in FTM mode, return constant temp
+		printk("In FTM mode, return a temp => 300\n");
+		return 300;
+	}
+#endif
+
 	rc = pm8xxx_adc_read(chip->batt_temp_channel, &result);
 	if (rc) {
 		pr_err("error reading adc channel = %d, rc = %d\n",
 					chip->vbat_channel, rc);
 		return rc;
 	}
-	pr_debug("batt_temp phy = %lld meas = 0x%llx\n", result.physical,
-						result.measurement);
+	//pr_debug("batt_temp phy = %lld meas = 0x%llx\n", result.physical,
+						//result.measurement); // kttech
 	if (result.physical > MAX_TOLERABLE_BATT_TEMP_DDC)
 		pr_err("BATT_TEMP= %d > 68degC, device will be shutdown\n",
 							(int) result.physical);
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	latest_batt_real_temp = (int)result.physical;
+#endif
 
 	return (int)result.physical;
 }
@@ -1577,6 +1656,12 @@ static int pm_batt_power_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ENERGY_FULL:
 		val->intval = get_prop_batt_fcc(chip) * 1000;
 		break;
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+		// O7: battery full design capacity 2040mA
+		val->intval = 2040000;
+		break;
+#endif
 	default:
 		return -EINVAL;
 	}
@@ -1619,6 +1704,11 @@ static void notify_usb_of_the_plugin_event(int plugin)
 static void __pm8921_charger_vbus_draw(unsigned int mA)
 {
 	int i, rc;
+
+#ifdef CONFIG_MACH_KTTECH
+	printk("[%s] charge mA=%d \n", __func__, mA);
+#endif
+
 	if (!the_chip) {
 		pr_err("called before init\n");
 		return;
@@ -1626,6 +1716,19 @@ static void __pm8921_charger_vbus_draw(unsigned int mA)
 
 	if (mA >= 0 && mA <= 2) {
 		usb_chg_current = 0;
+#ifdef CONFIG_MACH_KTTECH
+		if ( get_kttech_ftm_mode() == KTTECH_FTM_MODE_NONE )
+		{
+			rc = pm_chg_iusbmax_set(the_chip, 0);
+			if (rc) {
+				pr_err("unable to set iusb to %d rc = %d\n", 0, rc);
+			}
+
+			rc = pm_chg_usb_suspend_enable(the_chip, 1);
+			if (rc)
+				pr_err("fail to set suspend bit rc=%d\n", rc);
+		}
+#else
 		rc = pm_chg_iusbmax_set(the_chip, 0);
 		if (rc) {
 			pr_err("unable to set iusb to %d rc = %d\n", 0, rc);
@@ -1633,6 +1736,7 @@ static void __pm8921_charger_vbus_draw(unsigned int mA)
 		rc = pm_chg_usb_suspend_enable(the_chip, 1);
 		if (rc)
 			pr_err("fail to set suspend bit rc=%d\n", rc);
+#endif
 	} else {
 		rc = pm_chg_usb_suspend_enable(the_chip, 0);
 		if (rc)
@@ -1648,10 +1752,20 @@ static void __pm8921_charger_vbus_draw(unsigned int mA)
 			i--;
 		if (i < 0)
 			i = 0;
+#ifdef CONFIG_MACH_KTTECH
+		if ( get_kttech_ftm_mode() == KTTECH_FTM_MODE_NONE )
+		{
+			rc = pm_chg_iusbmax_set(the_chip, i);
+			if (rc) {
+				pr_err("unable to set iusb to %d rc = %d\n", i, rc);
+			}
+		}
+#else
 		rc = pm_chg_iusbmax_set(the_chip, i);
 		if (rc) {
 			pr_err("unable to set iusb to %d rc = %d\n", i, rc);
 		}
+#endif
 	}
 }
 
@@ -1660,7 +1774,11 @@ void pm8921_charger_vbus_draw(unsigned int mA)
 {
 	unsigned long flags;
 
+#ifdef CONFIG_MACH_KTTECH
+	printk("[%s] Enter charge mA=%d \n", __func__, mA);
+#else
 	pr_debug("Enter charge=%d\n", mA);
+#endif
 
 	if (!the_chip) {
 		pr_err("chip not yet initalized\n");
@@ -1758,6 +1876,21 @@ int pm8921_is_battery_present(void)
 }
 EXPORT_SYMBOL(pm8921_is_battery_present);
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+int pm8921_update_battery_status_force(void)
+{
+	if (!the_chip) {
+		pr_err("called before init\n");
+		return -EINVAL;
+
+
+	}
+	power_supply_changed(&the_chip->batt_psy);
+	return 0;
+}
+EXPORT_SYMBOL(pm8921_update_battery_status_force);
+#endif
+
 int pm8921_is_batfet_closed(void)
 {
 	if (!the_chip) {
@@ -1848,10 +1981,17 @@ int pm8921_usb_ovp_set_threshold(enum pm8921_usb_ov_threshold ov)
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_MACH_KTTECH
+	if (ov > PM_USB_OV_6V) {
+		pr_err("limiting to over voltage threshold to 6volts\n");
+		ov = PM_USB_OV_6V;
+	}
+#else
 	if (ov > PM_USB_OV_7V) {
 		pr_err("limiting to over voltage threshold to 7volts\n");
 		ov = PM_USB_OV_7V;
 	}
+#endif
 
 	temp = USB_OV_THRESHOLD_MASK & (ov << USB_OV_THRESHOLD_SHIFT);
 
@@ -2286,6 +2426,14 @@ static irqreturn_t batt_inserted_irq_handler(int irq, void *data)
 	handle_start_ext_chg(chip);
 	pr_debug("battery present=%d", status);
 	power_supply_changed(&chip->batt_psy);
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	if(status){
+		schedule_delayed_work(&chip->max17040_work, 
+			round_jiffies_relative(msecs_to_jiffies(500)));
+	}
+#endif
+
 	return IRQ_HANDLED;
 }
 
@@ -3048,6 +3196,18 @@ static void eoc_worker(struct work_struct *work)
 	}
 }
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+static void max17040_worker(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct pm8921_chg_chip *chip = container_of(dwork,
+				struct pm8921_chg_chip, max17040_work);
+
+	power_supply_changed(&chip->batt_psy);	
+
+}
+#endif
+
 static void btm_configure_work(struct work_struct *work)
 {
 	int rc;
@@ -3639,8 +3799,14 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 		return rc;
 	}
 
+#ifdef CONFIG_MACH_KTTECH
+	/* disable BTM by QA team request */
+	rc = pm_chg_masked_write(chip, CHG_CNTRL_2,
+				CHG_BAT_TEMP_DIS_BIT, (1<<2));
+#else
 	rc = pm_chg_masked_write(chip, CHG_CNTRL_2,
 				CHG_BAT_TEMP_DIS_BIT, 0);
+#endif
 	if (rc) {
 		pr_err("Failed to enable temp control chg rc=%d\n", rc);
 		return rc;
@@ -4002,6 +4168,12 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	const struct pm8921_charger_platform_data *pdata
 				= pdev->dev.platform_data;
 
+#ifdef CONFIG_MACH_KTTECH //by hw request.
+	if ( get_kttech_ftm_mode() == FTM_MODE_NO_LCD ){
+		charging_disabled = 1;
+	}
+#endif
+
 	if (!pdata) {
 		pr_err("missing platform data\n");
 		return -EINVAL;
@@ -4110,11 +4282,19 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, chip);
 	the_chip = chip;
 
+#ifdef CONFIG_MACH_KTTECH
+	pm8921_usb_ovp_set_threshold(PM_USB_OV_6V);
+#endif
+
 	wake_lock_init(&chip->eoc_wake_lock, WAKE_LOCK_SUSPEND, "pm8921_eoc");
 	INIT_DELAYED_WORK(&chip->eoc_work, eoc_worker);
 	INIT_DELAYED_WORK(&chip->vin_collapse_check_work,
 						vin_collapse_check_worker);
 	INIT_DELAYED_WORK(&chip->unplug_check_work, unplug_check_worker);
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	INIT_DELAYED_WORK(&chip->max17040_work, max17040_worker);
+#endif
 
 	rc = request_irqs(chip, pdev);
 	if (rc) {

@@ -529,7 +529,7 @@ static struct platform_device wfd_device = {
 };
 #endif
 
-#ifdef CONFIG_MSM_BUS_SCALING
+#if defined(CONFIG_MSM_BUS_SCALING) && defined(CONFIG_FB_MSM_DTV)
 static struct msm_bus_vectors dtv_bus_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
@@ -784,7 +784,7 @@ void __init msm8930_init_fb(void)
 
 	msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("mipi_dsi", &mipi_dsi_pdata);
-#ifdef CONFIG_MSM_BUS_SCALING
+#if defined(CONFIG_MSM_BUS_SCALING) && defined(CONFIG_FB_MSM_DTV)
 	msm_fb_register_device("dtv", &dtv_pdata);
 #endif
 }

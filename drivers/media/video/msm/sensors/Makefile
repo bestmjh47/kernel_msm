@@ -4,6 +4,7 @@ EXTRA_CFLAGS += -Idrivers/media/video/msm/io
 EXTRA_CFLAGS += -Idrivers/media/video/msm/eeprom
 EXTRA_CFLAGS += -Idrivers/media/video/msm/csi
 obj-$(CONFIG_MSM_CAMERA_SENSOR) += msm_sensor.o
+obj-$(CONFIG_KTTECH_CAMERA_S5K4E5) += s5k4e5.o
 obj-$(CONFIG_OV5647) += ov5647_v4l2.o
 obj-$(CONFIG_OV8825) += ov8825_v4l2.o
 obj-$(CONFIG_IMX074) += imx074_v4l2.o

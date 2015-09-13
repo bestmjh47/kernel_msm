@@ -356,6 +356,10 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 
 	print_alert = print_access_errors() || (l2esr & L2ESR_ACCESS_ERR_MASK);
 
+#if 1 //KTTECH_TEST
+	print_alert = 0;
+#endif
+
 	if (print_alert) {
 		pr_alert("L2 Error detected!\n");
 		pr_alert("\tL2ESR    = 0x%08x\n", l2esr);

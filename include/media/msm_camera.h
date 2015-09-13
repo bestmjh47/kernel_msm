@@ -817,7 +817,12 @@ struct msm_snapshot_pp_status {
 #define CFG_STOP_STREAM               45
 #define CFG_GET_CSI_PARAMS            46
 #define CFG_MAX			47
-
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+#define CFG_GET_CAL_DATA 50
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 
 #define MOVE_NEAR	0
 #define MOVE_FAR	1
@@ -1141,6 +1146,18 @@ struct cord {
 	uint32_t y;
 };
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+#define MAX_CAL_DATA_PACKET_LEN 640	
+
+struct	cal_info {
+  uint16_t cal_data_idx;
+  uint16_t cal_data_length;
+  unsigned char cal_v[MAX_CAL_DATA_PACKET_LEN];
+};
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 struct msm_eeprom_data_t {
 	void *eeprom_data;
 	uint16_t index;
@@ -1278,6 +1295,12 @@ struct sensor_cfg_data {
 		struct sensor_calib_data calib_info;
 		struct sensor_output_info_t output_info;
 		struct msm_eeprom_data_t eeprom_data;
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_CALIBRATION_EEPROM */
+#if 1
+		struct cal_info eeprom_value;
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 		struct csi_lane_params_t csi_lane_params;
 		/* QRD */
 		uint16_t antibanding;

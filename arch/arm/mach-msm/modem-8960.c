@@ -69,6 +69,18 @@ static void restart_modem(void)
 	subsystem_restart("modem");
 }
 
+#ifdef CONFIG_MACH_KTTECH
+#define FEATURE_MODEM_RESTART_MONITOR
+#endif
+
+#ifdef FEATURE_MODEM_RESTART_MONITOR
+extern int get_kttech_recovery_mode(void);
+
+#define MAX_MODEM_RESTART_NUM 10
+static int modem_restart_num = 0;
+#endif
+
+
 static void modem_wdog_check(struct work_struct *work)
 {
 	void __iomem *q6_sw_wdog_addr;
@@ -80,10 +92,24 @@ static void modem_wdog_check(struct work_struct *work)
 
 	regval = readl_relaxed(q6_sw_wdog_addr);
 	if (!regval) {
+#ifdef FEATURE_MODEM_RESTART_MONITOR
+		if(get_kttech_recovery_mode() || (++modem_restart_num < MAX_MODEM_RESTART_NUM)) {
+			pr_err("modem-8960: Modem watchdog wasn't activated!. Restarting the modem now. restart num = %d \n", modem_restart_num);
+			restart_modem();
+		}else{
+			panic("Unable to complete restarting modem \n");
+		}
+#else
 		pr_err("modem-8960: Modem watchdog wasn't activated!. Restarting the modem now.\n");
 		restart_modem();
+#endif
 	}
-
+#ifdef FEATURE_MODEM_RESTART_MONITOR
+	else {
+		printk("modem-8960: modem watchdog status check complete");
+		modem_restart_num = 0;
+	}
+#endif
 	iounmap(q6_sw_wdog_addr);
 }
 

@@ -200,6 +200,10 @@ static struct pm8xxx_mpp_config_data pm8xxx_adc_mpp_unconfig = {
 static bool pm8xxx_adc_calib_first_adc;
 static bool pm8xxx_adc_initialized, pm8xxx_adc_calib_device_init;
 
+#ifdef CONFIG_MACH_KTTECH
+static struct wake_lock adc_wake_lock;
+#endif
+
 static int32_t pm8xxx_adc_check_channel_valid(uint32_t channel)
 {
 	if (channel < CHANNEL_VCOIN ||
@@ -517,6 +521,9 @@ static uint32_t pm8xxx_adc_calib_device(void)
 	int rc, calib_read_1, calib_read_2;
 	u8 data_arb_usrp_cntrl1 = 0;
 
+#ifdef CONFIG_MACH_KTTECH
+	wake_lock_init(&adc_wake_lock, WAKE_LOCK_SUSPEND, "adc_kttech");
+#endif
 	conv.amux_channel = CHANNEL_125V;
 	conv.decimation = ADC_DECIMATION_TYPE2;
 	conv.amux_ip_rsv = AMUX_RSV1;
@@ -676,6 +683,10 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 	struct pm8xxx_adc *adc_pmic = pmic_adc;
 	int i = 0, rc = 0, rc_fail, amux_prescaling, scale_type;
 	enum pm8xxx_adc_premux_mpp_scale_type mpp_scale;
+#ifdef CONFIG_MACH_KTTECH
+	long comp_timeout;
+	static int timeout_cnt = 0; 
+#endif
 
 	if (!pm8xxx_adc_initialized)
 		return -ENODEV;
@@ -686,6 +697,9 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 	}
 
 	mutex_lock(&adc_pmic->adc_lock);
+#ifdef CONFIG_MACH_KTTECH
+	wake_lock(&adc_wake_lock);
+#endif
 
 	for (i = 0; i < adc_pmic->adc_num_board_channel; i++) {
 		if (channel == adc_pmic->adc_channel[i].channel_name)
@@ -734,7 +748,18 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 		goto fail;
 	}
 
+#ifdef CONFIG_MACH_KTTECH
+	comp_timeout = wait_for_completion_timeout(&adc_pmic->adc_rslt_completion, 2*HZ);
+
+	if (!comp_timeout) {
+		timeout_cnt ++;
+		pr_err("PM8xxx ADC read time out with channel: %d (timeout_cnt = %d) \n", channel, timeout_cnt);
+		rc = -ETIMEDOUT;
+		goto fail;
+	}
+#else
 	wait_for_completion(&adc_pmic->adc_rslt_completion);
+#endif
 
 	rc = pm8xxx_adc_read_adc_code(&result->adc_code);
 	if (rc) {
@@ -757,6 +782,9 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 		goto fail_unlock;
 	}
 
+#ifdef CONFIG_MACH_KTTECH
+	wake_unlock(&adc_wake_lock);
+#endif
 	mutex_unlock(&adc_pmic->adc_lock);
 
 	return 0;
@@ -765,6 +793,9 @@ fail:
 	if (rc_fail)
 		pr_err("pm8xxx adc power disable failed\n");
 fail_unlock:
+#ifdef CONFIG_MACH_KTTECH
+	wake_unlock(&adc_wake_lock);
+#endif
 	mutex_unlock(&adc_pmic->adc_lock);
 	pr_err("pm8xxx adc error with %d\n", rc);
 	return rc;

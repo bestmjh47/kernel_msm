@@ -147,6 +147,11 @@ VREG_CONSUMERS(L28) = {
 };
 VREG_CONSUMERS(L29) = {
 	REGULATOR_SUPPLY("8921_l29",		NULL),
+	#ifdef CONFIG_KTTECH_TDMB_SERVICE
+	//REGULATOR_SUPPLY("tdmb",              "spi_qsd.1"),
+	//REGULATOR_SUPPLY("tdmb_vol",          "tdmb"),
+	REGULATOR_SUPPLY("tdmb_vol",            "spi1.0"),
+	#endif
 };
 VREG_CONSUMERS(S1) = {
 	REGULATOR_SUPPLY("8921_s1",		NULL),
@@ -505,8 +510,13 @@ msm_pm8921_regulator_pdata[] __devinitdata = {
 		0, 2),
 	PM8XXX_NLDO1200(L28, "8921_l28", 0, 1, 375000, 1050000, 200, "8921_s7",
 		0, 3),
+	#ifdef CONFIG_KTTECH_TDMB_SERVICE
+	PM8XXX_LDO(L29,      "8921_l29", 0, 1, 1800000, 2100000, 200, "8921_s8",
+		0, 4),
+	#else
 	PM8XXX_LDO(L29,      "8921_l29", 0, 1, 2050000, 2100000, 200, "8921_s8",
 		0, 4),
+	#endif
 
 	/*	     ID        name      always_on pd en_t supply    reg_ID */
 	PM8XXX_VS300(USB_OTG,  "8921_usb_otg",  0, 1, 0,   "ext_5v", 5),
@@ -531,15 +541,32 @@ msm_rpm_regulator_init_data[] __devinitdata = {
 	RPM_LDO(L5,	 0, 1, 0, 2950000, 2950000, NULL,      0, 0),
 	RPM_LDO(L6,	 0, 1, 0, 2950000, 2950000, NULL,      0, 0),
 	RPM_LDO(L7,	 1, 1, 0, 1850000, 2950000, NULL,      10000, 10000),
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* bring up camera */
+#ifdef CONFIG_KTTECH_CAMERA_S5K4E5
+	RPM_LDO(L8,	 0, 1, 0, 3000000, 3000000, NULL,      0, 0),
+#else
 	RPM_LDO(L8,	 0, 1, 0, 2800000, 3000000, NULL,      0, 0),
+#endif
 	RPM_LDO(L9,	 0, 1, 0, 3000000, 3000000, NULL,      0, 0),
 	RPM_LDO(L10,	 0, 1, 0, 3000000, 3000000, NULL,      0, 0),
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* change voltage of L11  : 2.85V -> 2.8V */
+#if 1
+	RPM_LDO(L11,	 0, 1, 0, 2800000, 2800000, NULL,      0, 0),
+#else
 	RPM_LDO(L11,	 0, 1, 0, 2850000, 2850000, NULL,      0, 0),
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 	RPM_LDO(L12,	 0, 1, 0, 1200000, 1200000, "8921_s4", 0, 0),
 	RPM_LDO(L14,	 0, 1, 0, 1800000, 1800000, NULL,      0, 0),
 	RPM_LDO(L15,	 0, 1, 0, 1800000, 2950000, NULL,      0, 0),
 	RPM_LDO(L16,	 0, 1, 0, 2800000, 2800000, NULL,      0, 0),
+#ifdef CONFIG_MACH_KTTECH //vibe motor
+	RPM_LDO(L17,	 0, 1, 0, 1800000, 2950000, NULL,	   100000, 100000),
+#else
 	RPM_LDO(L17,	 0, 1, 0, 1800000, 2950000, NULL,      0, 0),
+#endif
 	RPM_LDO(L18,	 0, 1, 0, 1300000, 1300000, "8921_s4", 0, 0),
 	RPM_LDO(L21,	 0, 1, 0, 1900000, 1900000, "8921_s8", 0, 0),
 	RPM_LDO(L22,	 0, 1, 0, 2750000, 2750000, NULL,      0, 0),

@@ -126,10 +126,10 @@ config FB_MSM_OVERLAY
 	bool "MDP4 overlay support"
 	default n
 
-config FB_MSM_DTV
-	depends on FB_MSM_OVERLAY
-	bool
-	default n
+# KTTech config FB_MSM_DTV
+# KTTech 	depends on FB_MSM_OVERLAY
+# KTTech 	bool
+# KTTech 	default n
 
 config FB_MSM_EXTMDDI
 	bool
@@ -220,6 +220,17 @@ config FB_MSM_MIPI_DSI_TC358764_DSI2LVDS
 	  using a single LVDS link
 	  and up to WUXGA 1920x1200 18-bit
 	  using a dual LVDS link.
+
+# KTTech ADD
+config FB_MSM_MIPI_DSI_SHARP
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_KTTECH_MIPI_DSI_LG_L4500T
+	bool
+	select FB_MSM_MIPI_DSI
+	default y
 
 config FB_MSM_LCDC_ST15_WXGA
     bool
@@ -405,6 +416,18 @@ config FB_MSM_MIPI_SIMULATOR_VIDEO
 	select FB_MSM_MIPI_DSI_SIMULATOR
 	default n
 
+# KTTech ADD
+config FB_MSM_MIPI_SHARP_VIDEO_WXGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_SHARP
+	default n
+
+config FB_KTTECH_MIPI_LG_L4500T_VIDEO_HD_PT
+	bool
+	select FB_KTTECH_MIPI_DSI_LG_L4500T
+	default y
+
+
 config FB_MSM_NO_MDP_PIPE_CTRL
 	depends on FB_MSM_OVERLAY
 	bool "Do not use mdp_pipe_ctrl"
@@ -557,6 +580,8 @@ config FB_MSM_MIPI_PANEL_DETECT
 	select FB_MSM_MIPI_SIMULATOR_VIDEO
 	select FB_MSM_MIPI_CHIMEI_WXGA
 	select FB_MSM_MIPI_CHIMEI_WUXGA
+	select FB_MSM_MIPI_SHARP_VIDEO_WXGA_PT
+	select FB_KTTECH_MIPI_LG_L4500T_VIDEO_HD_PT
 	---help---
 	  Support for MIPI panel auto detect
 
@@ -694,6 +719,14 @@ config FB_MSM_MIPI_CHIMEI_WUXGA_PANEL
 	bool "MIPI Chimei WUXGA Panel"
 	select FB_MSM_MIPI_CHIMEI_WUXGA
 
+config FB_MSM_MIPI_SHARP_VIDEO_WXGA_PT_PANEL
+	bool "MIPI SHARP VIDEO WXGA PT Panel"
+	select FB_MSM_MIPI_SHARP_VIDEO_WXGA_PT
+
+config FB_KTTECH_MIPI_LG_L4500T_VIDEO_WXGA_PT_PANEL
+	bool "KTTECH MIPI LG L4500T VIDEO WXGA PT Panel"
+	select FB_KTTECH_MIPI_LG_L4500T_VIDEO_HD_PT
+
 config FB_MSM_MIPI_TRULY_VIDEO_WVGA_PT_PANEL
 	bool "MIPI Truly Video WVGA PT Panel"
 	select FB_MSM_MIPI_TRULY_VIDEO_WVGA_PT
@@ -802,16 +835,16 @@ config FB_MSM_HDMI_ADV7520_PANEL_HDCP_SUPPORT
           Choose to enable HDCP
 
 
-config FB_MSM_HDMI_MSM_PANEL
-	depends on FB_MSM_MDP40
-	bool "MSM HDMI 1080p Panel"
-	select FB_MSM_DTV
-        select FB_MSM_EXT_INTERFACE_COMMON
-	select FB_MSM_HDMI_COMMON
-	select FB_MSM_HDMI_3D
-	default n
-	---help---
-	  Support for 480p/720p/1080i/1080p output through MSM HDMI
+# KTTech config FB_MSM_HDMI_MSM_PANEL
+# KTTech 	depends on FB_MSM_MDP40
+# KTTech 	bool "MSM HDMI 1080p Panel"
+# KTTech 	select FB_MSM_DTV
+# KTTech         select FB_MSM_EXT_INTERFACE_COMMON
+# KTTech 	select FB_MSM_HDMI_COMMON
+# KTTech 	select FB_MSM_HDMI_3D
+# KTTech 	default n
+# KTTech 	---help---
+# KTTech 	  Support for 480p/720p/1080i/1080p output through MSM HDMI
 
 config FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT
 	depends on FB_MSM_HDMI_MSM_PANEL

@@ -262,7 +262,15 @@ int32_t msm_camera_i2c_poll(struct msm_camera_i2c_client *client,
 			addr, data, data_type);
 		if (rc == 0 || rc < 0)
 			break;
+		/* Begin - jaemoon.hwang@kttech.co.kr */
+		/* improve polling time */
+#if 1
+		//usleep_range(5000, 6000);
+		usleep_range(4000, 5000);
+#else
 		usleep_range(10000, 11000);
+#endif
+		/* End - jaemoon.hwang@kttech.co.kr */
 	}
 	return rc;
 }

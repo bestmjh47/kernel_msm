@@ -772,6 +772,34 @@ static int pm8xxx_led_pwm_configure(struct pm8xxx_led_data *led)
 	return rc;
 }
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+struct pm8xxx_led_data *led_kp;
+
+//int pm8xxx_led_kp_set(enum led_brightness value)
+int pm8xxx_led_kp_set(int value)
+{ 
+	int rc;
+	u8 level;
+	//printk("[HJM] %s, led_brightness value:%d \n", __func__, value);
+
+	level = (value << PM8XXX_DRV_KEYPAD_BL_SHIFT) & PM8XXX_DRV_KEYPAD_BL_MASK;
+
+	led_kp->reg &= ~PM8XXX_DRV_KEYPAD_BL_MASK;
+	led_kp->reg |= level;
+
+	rc = pm8xxx_writeb(led_kp->dev->parent, SSBI_REG_ADDR_DRV_KEYPAD, led_kp->reg);
+
+	if (rc < 0) {
+		dev_err(led_kp->cdev.dev, "can't set keypad backlight level rc=%d\n", rc);
+	}
+	//printk("[HJM] %s, return rc:%d; \n", __func__, rc);
+	return rc;
+}
+EXPORT_SYMBOL(pm8xxx_led_kp_set);
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 
 static int __devinit pm8xxx_led_probe(struct platform_device *pdev)
 {
@@ -840,6 +868,14 @@ static int __devinit pm8xxx_led_probe(struct platform_device *pdev)
 			rc = -EINVAL;
 			goto fail_id_check;
 		}
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+		if (led_dat->id == PM8XXX_ID_LED_KB_LIGHT)
+			led_kp = led_dat;
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 
 		led_dat->cdev.name		= curr_led->name;
 		led_dat->cdev.default_trigger   = curr_led->default_trigger;

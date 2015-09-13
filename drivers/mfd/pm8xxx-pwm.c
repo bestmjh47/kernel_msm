@@ -790,6 +790,93 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(pwm_config);
 
+#ifdef CONFIG_KTTECH_PWM_NANO_SEC_CTRL
+
+static void pm8xxx_pwm_calc_pwm_value_nsec(struct pwm_device *pwm,
+				      unsigned int period_ns,
+				      unsigned int duty_ns)
+{
+	unsigned int max_pwm_value, tmp;
+	unsigned int duty_us = duty_ns/1000;
+	
+	/* Figure out pwm_value with overflow handling */
+	tmp = 1 << (sizeof(tmp) * 8 - pwm->period.pwm_size);
+	if (duty_us < tmp) {
+		tmp = duty_ns << pwm->period.pwm_size;
+		pwm->pwm_value = tmp / period_ns;
+	} else {
+		tmp = period_ns >> pwm->period.pwm_size;
+		pwm->pwm_value = duty_ns / tmp;
+	}
+	max_pwm_value = (1 << pwm->period.pwm_size) - 1;
+	if (pwm->pwm_value > max_pwm_value)
+		pwm->pwm_value = max_pwm_value;
+}
+
+
+int pwm_config_nsec_ctrl(struct pwm_device *pwm, int duty_ns, int period_ns)
+{
+	struct pm8xxx_pwm_period *period;
+	int period_us;
+	int	rc = 0;
+
+#if 0
+	if (pwm == NULL || IS_ERR(pwm) ||
+		duty_us > period_us ||
+		(unsigned)period_us > PM8XXX_PWM_PERIOD_MAX ||
+		(unsigned)period_us < PM8XXX_PWM_PERIOD_MIN) {
+		pr_err("Invalid pwm handle or parameters\n");
+		return -EINVAL;
+	}
+#endif
+
+	if (pwm->chip == NULL) {
+		pr_err("No pwm_chip\n");
+		return -ENODEV;
+	}
+
+	period = &pwm->period;
+
+	mutex_lock(&pwm->chip->pwm_mutex);
+
+	if (!pwm->in_use) {
+		rc = -EINVAL;
+		goto out_unlock;
+	}
+
+	period_us = period_ns/1000;
+
+	if (pwm->pwm_period != period_us) {
+		pm8xxx_pwm_calc_period(period_us, period);
+		pm8xxx_pwm_save_period(pwm);
+		pwm->pwm_period = period_us;
+	}
+
+	pm8xxx_pwm_calc_pwm_value_nsec(pwm, period_ns, duty_ns);
+	pm8xxx_pwm_save_pwm_value(pwm);
+
+	if (pwm_chip->is_lpg_supported) {
+		pm8xxx_pwm_save(&pwm->pwm_lpg_ctl[1],
+				PM8XXX_PWM_BYPASS_LUT, PM8XXX_PWM_BYPASS_LUT);
+
+		pm8xxx_pwm_bank_sel(pwm);
+		rc = pm8xxx_lpg_pwm_write(pwm, 1, 6);
+	} else {
+		rc = pm8xxx_pwm_write(pwm);
+	}
+
+	pr_debug("duty/period=%u/%u usec: pwm_value=%d (of %d)\n",
+		 (unsigned)duty_ns, (unsigned)period_ns,
+		 pwm->pwm_value, 1 << period->pwm_size);
+
+out_unlock:
+	mutex_unlock(&pwm->chip->pwm_mutex);
+	return rc;
+}
+EXPORT_SYMBOL_GPL(pwm_config_nsec_ctrl);
+
+#endif /* CONFIG_KTTECH_PWM_NANO_SEC_CTRL */
+
 /**
  * pwm_enable - start a PWM output toggling
  * @pwm: the PWM device

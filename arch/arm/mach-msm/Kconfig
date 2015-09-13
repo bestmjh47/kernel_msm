@@ -320,6 +320,130 @@ config ARCH_MSM9625
 
 endmenu
 
+
+########## KT Tech Kernel Config Define ##########
+config MACH_KTTECH
+	bool "KTTECH O7 Board"
+
+########## KT Tech Kernel Config Board Define ##########
+
+config KTTECH_TARGET_O7_WS1_KCONFIG
+	bool "KTTECH O7 WS1 BOARD"
+
+config KTTECH_TARGET_O7_WS2_KCONFIG
+	bool "KTTECH O7 WS2 BOARD"
+
+config KTTECH_TARGET_O7_PT_KCONFIG
+	bool "KTTECH O7 PT BOARD"
+
+config KTTECH_TARGET_O7_ES1_KCONFIG
+	bool "KTTECH O7 ES1 BOARD"
+
+config KTTECH_TARGET_O7_ES2_KCONFIG
+	bool "KTTECH O7 ES2 BOARD"
+	select KTTECH_MIPI_LG_L4500T_VIDEO_HD
+	select KTTECH_TPS61161_BL
+	select KTTECH_TPS61161_PWM_BL
+	select KTTECH_PWM_NANO_SEC_CTRL
+	select KTTECH_TOUCH_MMS100
+	select KTTECH_SOUND
+	select KTTECH_HEADSET
+	select KTTECH_TDMB_SERVICE
+	select KTTECH_PN544_NFC	
+	select KTTECH_CAMERA
+	select KTTECH_CAMERA_S5K4E5
+	select KTTECH_CAMERA_S5K4E5_ACT
+	select KTTECH_CAMERA_MT9M114
+	select KTTECH_FLASH_PMIC
+	select KTTECH_MOTOR_MDH1_VIBETONZ
+	select KTTECH_O7_BATTERY
+	select KTTECH_BATTERY_GAUGE_MAXIM
+	
+### Sharp WXGA LCD
+config KTTECH_MIPI_SHARP_VIDEO_WXGA
+	bool
+	
+### LG HD LCD
+config KTTECH_MIPI_LG_L4500T_VIDEO_HD
+	bool
+
+### TPS61161 BL
+config KTTECH_TPS61161_BL
+	bool
+
+### TPS61161 PWM BL
+config KTTECH_TPS61161_PWM_BL
+	bool
+
+### PWM Nano Sec control for BL
+config KTTECH_PWM_NANO_SEC_CTRL
+	bool
+
+### Melfas Touch
+config KTTECH_TOUCH_MMS100
+	bool
+
+### Touch
+config KTTECH_TOUCH_QT602240
+	bool
+
+config KTTECH_TOUCH_PMIC_GPIO
+	bool
+
+### SOUND (YDA165)
+config KTTECH_SOUND
+	bool
+	
+config KTTECH_SOUND_AMP
+	bool
+
+config KTTECH_SOUND_YDA165
+	depends on (KTTECH_SOUND_AMP)
+	default y
+	bool "KT Tech YDA165 Sound Amp"
+	help
+	  If you use a KT Tech YDA165 Sound Amp, say Y. Otherwise, say N.
+
+config KTTECH_HEADSET
+	bool
+	
+config KTTECH_TDMB_SERVICE
+	bool
+
+config KTTECH_PN544_NFC
+	bool
+
+config KTTECH_MOTOR_MDH1_VIBETONZ
+	bool
+
+	
+### Camera
+config KTTECH_CAMERA
+	bool
+
+config KTTECH_CAMERA_S5K4E5
+	bool
+
+config KTTECH_CAMERA_S5K4E5_ACT
+	bool
+	
+config KTTECH_CAMERA_MT9M114
+	bool
+
+config KTTECH_FLASH_KTD267
+	bool
+
+config KTTECH_FLASH_PMIC
+	bool
+	
+config KTTECH_O7_BATTERY
+	bool
+
+config KTTECH_BATTERY_GAUGE_MAXIM
+	bool
+
+########## KT Tech Kernel Config End  ##########
+
 choice
 	prompt "MSM SoC Revision"
 	default MSM_SOC_REV_NONE

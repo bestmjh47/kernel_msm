@@ -18,7 +18,19 @@
 #include <mach/gpiomux.h>
 #include "devices.h"
 #include "board-8960.h"
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* bring up camera */
+#ifdef CONFIG_MACH_KTTECH
+#include <linux/board_kttech.h>
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+#include <linux/leds-pm8xxx.h>
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 #ifdef CONFIG_MSM_CAMERA
 
 #if (defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)) && \
@@ -195,10 +207,18 @@ static struct msm_camera_sensor_strobe_flash_data strobe_flash_xenon = {
 
 #ifdef CONFIG_MSM_CAMERA_FLASH
 static struct msm_camera_sensor_flash_src msm_flash_src = {
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* implement camera flash led by PMIC */
+#ifdef CONFIG_KTTECH_FLASH_PMIC
+	.flash_sr_type = MSM_CAMERA_FLASH_SRC_PMIC,
+	._fsrc.pmic_src.pmic_set_current_kb_light = pm8xxx_led_kp_set,
+#elif defined(CONFIG_KTTECH_FLASH_KTD267)
 	.flash_sr_type = MSM_CAMERA_FLASH_SRC_EXT,
 	._fsrc.ext_driver_src.led_en = VFE_CAMIF_TIMER1_GPIO,
 	._fsrc.ext_driver_src.led_flash_en = VFE_CAMIF_TIMER2_GPIO,
 	._fsrc.ext_driver_src.flash_id = MAM_CAMERA_EXT_LED_FLASH_SC628A,
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 };
 #endif
 
@@ -421,11 +441,13 @@ static struct camera_vreg_t msm_8960_back_cam_vreg[] = {
 	{"cam_vaf", REG_LDO, 2800000, 2800000, 300000},
 };
 
+#ifndef CONFIG_MACH_KTTECH
 static struct camera_vreg_t msm_8960_front_cam_vreg[] = {
 	{"cam_vio", REG_VS, 0, 0, 0},
 	{"cam_vana", REG_LDO, 2800000, 2850000, 85600},
 	{"cam_vdig", REG_LDO, 1200000, 1200000, 105000},
 };
+#endif
 
 static struct gpio msm8960_common_cam_gpio[] = {
 	{5, GPIOF_DIR_IN, "CAMIF_MCLK"},
@@ -473,6 +495,8 @@ static struct msm_camera_gpio_conf msm_8960_back_cam_gpio_conf = {
 	.cam_gpio_set_tbl_size = ARRAY_SIZE(msm8960_back_cam_gpio_set_tbl),
 };
 
+
+#ifndef CONFIG_MACH_KTTECH
 static struct i2c_board_info msm_act_main_cam_i2c_info = {
 	I2C_BOARD_INFO("msm_actuator", 0x11),
 };
@@ -484,6 +508,7 @@ static struct msm_actuator_info msm_act_main_cam_0_info = {
 	.vcm_pwd        = 0,
 	.vcm_enable     = 0,
 };
+#endif
 
 static struct i2c_board_info msm_act_main_cam1_i2c_info = {
 	I2C_BOARD_INFO("msm_actuator", 0x18),
@@ -496,6 +521,8 @@ static struct msm_actuator_info msm_act_main_cam_1_info = {
 	.vcm_pwd        = 0,
 	.vcm_enable     = 0,
 };
+
+#ifndef CONFIG_MACH_KTTECH
 
 static struct msm_camera_sensor_flash_data flash_imx074 = {
 	.flash_type	= MSM_CAMERA_FLASH_LED,
@@ -538,6 +565,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
 	.actuator_info = &msm_act_main_cam_0_info,
 	.eeprom_info = &imx074_eeprom_info,
 };
+#endif //__ifndef kttech
 
 static struct camera_vreg_t msm_8960_mt9m114_vreg[] = {
 	{"cam_vio", REG_VS, 0, 0, 0},
@@ -556,7 +584,14 @@ static struct msm_camera_csi_lane_params mt9m114_csi_lane_params = {
 };
 
 static struct msm_camera_sensor_platform_info sensor_board_info_mt9m114 = {
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_ROTATION */
+#if 1
+	.mount_angle = 270,
+#else
 	.mount_angle = 90,
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
 	.cam_vreg = msm_8960_mt9m114_vreg,
 	.num_vreg = ARRAY_SIZE(msm_8960_mt9m114_vreg),
 	.gpio_conf = &msm_8960_front_cam_gpio_conf,
@@ -573,6 +608,113 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9m114_data = {
 	.sensor_type = YUV_SENSOR,
 };
 
+/* Begin - jaemoon.hwang@kttech.co.kr */
+#if 0 //def CONFIG_KTTECH_CAMERA_S5K4E5_ACT
+static struct i2c_board_info s5k4e5_actuator_i2c_info = {
+	I2C_BOARD_INFO("s5k4e5_act", 0x18 >> 1),
+};
+
+static struct msm_actuator_info s5k4e5_actuator_info = {
+	.board_info     = &s5k4e5_actuator_i2c_info,
+	.bus_id         = MSM_8960_GSBI4_QUP_I2C_BUS_ID,
+	.vcm_pwd        = 0,
+	.vcm_enable     = 1,
+};
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* bring up camera */
+#ifdef CONFIG_KTTECH_CAMERA_S5K4E5
+
+/* Begin - jaemoon.hwang@kttech.co.kr */
+#if 1
+/* Begin - 1031 patch new work : s5k4e5 */
+static struct msm_camera_sensor_flash_data flash_s5k4e5 = {
+	.flash_type	= MSM_CAMERA_FLASH_LED,
+#ifdef CONFIG_MSM_CAMERA_FLASH
+	.flash_src	= &msm_flash_src
+#endif
+};
+
+static struct msm_camera_csi_lane_params s5k4e5_csi_lane_params = {
+	.csi_lane_assign = 0xE4,
+	.csi_lane_mask = 0xF,
+};
+
+
+static struct msm_camera_sensor_platform_info sensor_board_info_s5k4e5 = {
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* CONFIG_CAMERA_ROTATION */
+#if 1
+	.mount_angle	= 0, 
+#else
+	.mount_angle	= 90,
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+	.cam_vreg = msm_8960_back_cam_vreg,
+	.num_vreg = ARRAY_SIZE(msm_8960_back_cam_vreg),
+	.gpio_conf = &msm_8960_back_cam_gpio_conf,
+	.csi_lane_params = &s5k4e5_csi_lane_params,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_s5k4e5_data = {
+	.sensor_name	= "s5k4e5",
+	.pdata	= &msm_camera_csi_device_data[0],
+	.flash_data	= &flash_s5k4e5,
+	.strobe_flash_data = &strobe_flash_xenon,
+	.sensor_platform_info = &sensor_board_info_s5k4e5,
+	.csi_if	= 1,
+	.camera_type = BACK_CAMERA_2D,
+   .sensor_type = BAYER_SENSOR,
+#if 0 //def CONFIG_KTTECH_CAMERA_S5K4E5_ACT
+//#if defined(CONFIG_S5K4E5_ACT) && !defined(CONFIG_KTTECH_CAMERA)
+	.actuator_info = &s5k4e5_actuator_info
+#endif
+  	.actuator_info = &msm_act_main_cam_1_info,
+};
+/* End - 1031 patch new work : s5k4e5 */
+#else	/* This code is not used in 1031 patch any more */
+static struct msm_camera_sensor_flash_data flash_s5k4e5 = {
+	.flash_type	= MSM_CAMERA_FLASH_LED,
+#ifdef CONFIG_MSM_CAMERA_FLASH
+	.flash_src	= &msm_flash_src
+#endif
+};
+
+static struct msm_camera_sensor_platform_info sensor_board_info_s5k4e5 = {
+	.mount_angle	= 0,				// 0, 180: for landscape 90,270: for portrait
+	.sensor_reset	= CAM1_RST_N,		// GPIO pin number for reset
+	//.sensor_pwd	= 0,				// GPIO pin number for power on/off
+	//.vcm_pwd	= 0,					// GPIO pin number for AF actuator on/off
+	//.vcm_enable	= 0,				// 0: To disable, 1: enable actuator
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_s5k4e5_data = {
+	.sensor_name	= "s5k4e5",
+	.pdata	= &msm_camera_csi_device_data[0],
+	.flash_data	= &flash_s5k4e5,
+	.strobe_flash_data = &strobe_flash_xenon,
+	.sensor_platform_info = &sensor_board_info_s5k4e5,
+	//.gpio_conf = &gpio_conf,
+	.csi_if	= 1,
+	.camera_type = BACK_CAMERA_2D,
+};
+
+#if 0	//not used in 102350 patch
+static struct platform_device msm8960_camera_sensor_s5k4e5 = {
+	.name	= "msm_camera_s5k4e5",
+	.dev	= {
+		.platform_data = &msm_camera_sensor_s5k4e5_data,
+	},
+};
+#endif
+#endif
+/* End - jaemoon.hwang@kttech.co.kr */
+#endif //#ifdef CONFIG_KTTECH_CAMERA_S5K4E5
+
+
+#ifndef CONFIG_MACH_KTTECH
 static struct msm_camera_sensor_flash_data flash_ov2720 = {
 	.flash_type	= MSM_CAMERA_FLASH_NONE,
 };
@@ -690,7 +832,9 @@ static struct msm_camera_sensor_info msm_camera_sensor_imx091_data = {
 	.actuator_info = &msm_act_main_cam_1_info,
 	.eeprom_info = &imx091_eeprom_info,
 };
+#endif //__ifndef kttech
 
+#ifndef CONFIG_KTTECH_CAMERA
 static struct pm8xxx_mpp_config_data privacy_light_on_config = {
 	.type		= PM8XXX_MPP_TYPE_SINK,
 	.level		= PM8XXX_MPP_CS_OUT_5MA,
@@ -715,6 +859,7 @@ static int32_t msm_camera_8960_ext_power_ctrl(int enable)
 	}
 	return rc;
 }
+#endif
 
 static struct platform_device msm_camera_server = {
 	.name = "msm_cam_server",
@@ -742,17 +887,31 @@ void __init msm8960_init_cam(void)
 
 	if (machine_is_msm8960_liquid()) {
 		struct msm_camera_sensor_info *s_info;
+/* Begin - jaemoon.hwang@kttech.co.kr */
+/* bring up camera */
+#ifdef CONFIG_KTTECH_CAMERA
+		#ifdef CONFIG_KTTECH_CAMERA_S5K4E5
+		s_info = &msm_camera_sensor_s5k4e5_data;
+	#endif
+	#ifdef CONFIG_KTTECH_CAMERA_MT9M114
+		s_info = &msm_camera_sensor_mt9m114_data;
+	#endif
+	    #else
 		s_info = &msm_camera_sensor_imx074_data;
 		s_info->sensor_platform_info->mount_angle = 180;
 		s_info = &msm_camera_sensor_ov2720_data;
 		s_info->sensor_platform_info->ext_power_ctrl =
 			msm_camera_8960_ext_power_ctrl;
+		#endif
+/* End - jaemoon.hwang@kttech.co.kr */		
 	}
 
+  #ifndef CONFIG_MACH_KTTECH
 	if (machine_is_msm8960_fluid()) {
 		msm_camera_sensor_imx091_data.sensor_platform_info->
 			mount_angle = 270;
 	}
+	#endif
 
 	platform_device_register(&msm_camera_server);
 	platform_device_register(&msm8960_device_csiphy0);
@@ -768,6 +927,7 @@ void __init msm8960_init_cam(void)
 
 #ifdef CONFIG_I2C
 static struct i2c_board_info msm8960_camera_i2c_boardinfo[] = {
+  #ifndef CONFIG_MACH_KTTECH
 	{
 	I2C_BOARD_INFO("imx074", 0x1A),
 	.platform_data = &msm_camera_sensor_imx074_data,
@@ -776,10 +936,28 @@ static struct i2c_board_info msm8960_camera_i2c_boardinfo[] = {
 	I2C_BOARD_INFO("ov2720", 0x6C),
 	.platform_data = &msm_camera_sensor_ov2720_data,
 	},
+	#endif
 	{
 	I2C_BOARD_INFO("mt9m114", 0x48),
 	.platform_data = &msm_camera_sensor_mt9m114_data,
 	},
+	#ifdef CONFIG_KTTECH_CAMERA_S5K4E5
+	{
+	//I2C_BOARD_INFO("s5k4e5", 0x20 >> 1),
+	I2C_BOARD_INFO("s5k4e5", 0x20),
+	.platform_data = &msm_camera_sensor_s5k4e5_data,
+	},
+  /* Begin - jaemoon.hwang@kttech.co.kr */
+  /* CONFIG_CAMERA_CALIBRATION_EEPROM */
+  #if 1
+  	{
+  	I2C_BOARD_INFO("s5k4e5_eeprom", 0xA0 >> 1),
+  	},
+  #endif
+  /* End - jaemoon.hwang@kttech.co.kr */
+  #endif
+
+  #ifndef CONFIG_MACH_KTTECH
 	{
 	I2C_BOARD_INFO("s5k3l1yx", 0x20),
 	.platform_data = &msm_camera_sensor_s5k3l1yx_data,
@@ -793,6 +971,7 @@ static struct i2c_board_info msm8960_camera_i2c_boardinfo[] = {
 	I2C_BOARD_INFO("imx091", 0x34),
 	.platform_data = &msm_camera_sensor_imx091_data,
 	},
+	#endif
 };
 
 struct msm_camera_board_info msm8960_camera_board_info = {

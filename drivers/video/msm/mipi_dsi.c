@@ -35,6 +35,15 @@
 #include "mdp.h"
 #include "mdp4.h"
 
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+
+/* Macros assume PMIC GPIOs and MPPs start at 1 */
+#define PM8921_GPIO_BASE		NR_GPIO_IRQS
+#define PM8921_GPIO_PM_TO_SYS(pm_gpio)	(pm_gpio - 1 + PM8921_GPIO_BASE)
+
+#include <linux/board_kttech.h>
+#endif
+
 u32 dsi_irq;
 u32 esc_byte_ratio;
 
@@ -63,6 +72,49 @@ static struct platform_driver mipi_dsi_driver = {
 
 struct device dsi_dev;
 
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+static int dsi_l4500t_on = 0;
+
+static int mipi_lg_l4500t_lcd_reset( int on )
+{
+	int rc = 0;
+	static int gpio_disp_rst;
+
+	if( dsi_l4500t_on == 0 )
+	{
+		gpio_disp_rst = LCD_RESET_GPIO;
+
+		rc = gpio_request(gpio_disp_rst, "disp_rst_n");
+		if (rc) {
+			pr_err("request gpio_disp_rst failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+	
+		dsi_l4500t_on = true;
+	}
+
+	if ( on  )
+	{
+		/* LCD Reset Sequence */
+		gpio_set_value_cansleep(gpio_disp_rst, 1); 
+		msleep(5);
+		gpio_set_value_cansleep(gpio_disp_rst, 0); 
+		msleep(10);
+		gpio_set_value_cansleep(gpio_disp_rst, 1); 
+		msleep(10);  
+
+		printk(KERN_INFO "%s: ON \n", __func__);
+	}
+	else
+	{
+		gpio_set_value_cansleep(gpio_disp_rst, 0);
+		msleep(120);
+		printk(KERN_INFO "%s: OFF \n", __func__);
+	}
+  
+	return 0;
+}
+#endif
 static int mipi_dsi_off(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -120,6 +172,12 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 	mipi_dsi_ahb_ctrl(0);
 	spin_unlock_bh(&dsi_clk_lock);
+
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+	// LCD Reset
+	mipi_lg_l4500t_lcd_reset( 0);
+#endif
+
 
 	mipi_dsi_unprepare_clocks();
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
@@ -246,6 +304,11 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	}
 
 	mipi_dsi_host_init(mipi);
+
+#ifdef CONFIG_KTTECH_MIPI_LG_L4500T_VIDEO_HD
+	// LCD Reset
+	mipi_lg_l4500t_lcd_reset( 1 );
+#endif
 
 	if (mipi->force_clk_lane_hs) {
 		u32 tmp;

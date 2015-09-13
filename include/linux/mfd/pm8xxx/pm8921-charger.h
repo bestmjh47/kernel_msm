@@ -198,6 +198,15 @@ int pm8921_is_dc_chg_plugged_in(void);
  */
 int pm8921_is_battery_present(void);
 
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+/**
+ * pm8921_update_battery_status_force -
+ *
+ * update battery status forcefully
+ */
+int pm8921_update_battery_status_force(void);
+#endif
+
 /**
  * pm8921_set_max_battery_charge_current - set max battery chg current
  *
@@ -317,6 +326,14 @@ static inline int pm8921_is_battery_present(void)
 {
 	return -ENXIO;
 }
+
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+static inline int pm8921_update_battery_status_force(void)
+{
+	return -ENXIO;
+}
+#endif
+
 static inline int pm8917_set_under_voltage_detection_threshold(int mv)
 {
 	return -ENXIO;

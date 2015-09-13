@@ -1397,9 +1397,11 @@ static void __init msm8930_init_buses(void)
 #endif
 }
 
+#if !defined(CONFIG_KTTECH_BATTERY_GAUGE_MAXIM)
 static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 	.max_clock_speed = 15060000,
 };
+#endif
 
 #ifdef CONFIG_USB_MSM_OTG_72K
 static struct msm_otg_platform_data msm_otg_pdata;
@@ -2039,7 +2041,7 @@ static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
 	.src_clk_rate = 24000000,
 };
 
-
+#ifndef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
 static struct ks8851_pdata spi_eth_pdata = {
 	.irq_gpio = KS8851_IRQ_GPIO,
 	.rst_gpio = KS8851_RST_GPIO,
@@ -2063,6 +2065,7 @@ static struct spi_board_info spi_board_info[] __initdata = {
 		.mode                   = SPI_MODE_0,
 	},
 };
+#endif
 
 static struct platform_device msm_device_saw_core0 = {
 	.name	= "saw-regulator",
@@ -2182,7 +2185,11 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_8960_riva,
 	&msm_pil_tzapps,
 	&msm_pil_vidc,
+#ifdef CONFIG_KTTECH_BATTERY_GAUGE_MAXIM
+	&msm8960_device_qup_i2c_gsbi1,
+#else
 	&msm8960_device_qup_spi_gsbi1,
+#endif
 	&msm8960_device_qup_i2c_gsbi3,
 	&msm8960_device_qup_i2c_gsbi4,
 	&msm8960_device_qup_i2c_gsbi9,
@@ -2556,9 +2563,12 @@ static void __init msm8930_cdp_init(void)
 	android_usb_pdata.swfi_latency =
 			msm_rpmrs_levels[0].latency_us;
 	msm8930_init_gpiomux();
+
+#if !defined(CONFIG_KTTECH_BATTERY_GAUGE_MAXIM)
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
+#endif
 
 	/*
 	 * TODO: When physical 8930/PM8038 hardware becomes
